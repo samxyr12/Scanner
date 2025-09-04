@@ -1096,7 +1096,8 @@ const STORAGE_KEYS = {
     INVENTORY: 'inventoryData',
     SETTINGS: 'scannerSettings',
     TABLE_HISTORY: 'tableHistory',
-    PIN_DATA: 'pinData'
+    PIN_DATA: 'pinData',
+    QR_DATA: 'qrData' // Kunci baru untuk menyimpan data QR yang discan
 };
 
 function cekLogin() {
@@ -1160,16 +1161,10 @@ function generateQRCode() {
         return;
     }
 
-    const currentDate = new Date().toISOString().slice(0, 10); // Tanggal saat ini (YYYY-MM-DD)
+    const currentDate = new Date().toISOString().slice(0, 10);
     const pin = '451661750'; // PIN mutlak untuk mode tamu
-    const qrData = JSON.stringify({
-        username,
-        pin,
-        date: currentDate, // Sertakan tanggal pembuatan di QR code
-        mode: 'guest'
-    });
+    const qrData = JSON.stringify({ username, pin, date: currentDate, mode: 'guest' });
 
-    // Simpan data PIN ke localStorage untuk validasi
     const pinData = JSON.parse(localStorage.getItem(STORAGE_KEYS.PIN_DATA) || '{}');
     const pinKey = `${username}-${currentDate}`;
     pinData[pinKey] = { pin, date: currentDate };
@@ -1237,7 +1232,6 @@ function validateGuestAccess(qrData) {
     const pinData = JSON.parse(localStorage.getItem(STORAGE_KEYS.PIN_DATA) || '{}');
     const pinKey = `${qrData.username}-${qrData.date}`;
 
-    // Validasi PIN, pemberi PIN, dan tanggal
     if (
         qrData.pin === '451661750' &&
         qrData.date === currentDate &&
@@ -1249,13 +1243,13 @@ function validateGuestAccess(qrData) {
         localStorage.setItem('isGuest', 'true');
         localStorage.setItem('guestLoginTime', new Date().toISOString());
         localStorage.setItem('guestProvider', qrData.username);
+        localStorage.setItem(STORAGE_KEYS.QR_DATA, JSON.stringify(qrData)); // Simpan data QR ke localStorage
         guestStorageKey = 'guestInventory_' + qrData.username;
         stopGuestScanner();
         loadFromLocalStorage();
-        showNotification(`✅ Berhasil masuk sebagai tamu untuk ${qrData.username}!`, 'success');
         window.location.reload();
     } else {
-        showNotification('❌ QR code tidak valid, PIN salah, atau tanggal kadaluarsa!', 'error');
+        showNotification('❌ QR code tidak valid atau PIN kadaluarsa!', 'error');
     }
 }
 
@@ -2294,7 +2288,7 @@ function searchHistory(searchTerm) {
 function restoreTable(index) {
     if (!cekLogin()) return;
 
-    viewTable(index);
+    viewTable(index); // Show the table in popup for confirmation
 }
 
 function deleteTable(index) {
@@ -2402,10 +2396,7 @@ function toggleSetting(setting) {
     settings[setting] = !settings[setting];
     saveSettings();
     document.getElementById(`${setting === 'autoPopup' ? 'auto-popup' : setting}-toggle`).classList.toggle('active');
-    showNotification(
-        `✅ ${setting === 'autoPopup' ? 'Auto Popup' : setting.charAt(0).toUpperCase() + setting.slice(1)} ${settings[setting] ? 'diaktifkan' : 'dinonaktifkan'}`,
-        'success'
-    );
+    showNotification(`✅ ${setting === 'autoPopup' ? 'Auto Popup' : setting.charAt(0).toUpperCase() + setting.slice(1)} ${settings[setting] ? 'diaktifkan' : 'dinonaktifkan'}`, 'success');
 }
 
 function playBeepSound() {
@@ -2481,6 +2472,7 @@ function logout() {
         localStorage.removeItem('isGuest');
         localStorage.removeItem('guestLoginTime');
         localStorage.removeItem('guestProvider');
+        localStorage.removeItem(STORAGE_KEYS.QR_DATA); // Hapus data QR saat logout
         if (guestStorageKey) {
             localStorage.removeItem(guestStorageKey);
         }
@@ -2491,6 +2483,66 @@ function logout() {
         window.location.reload();
     }
 }
-    </script>
+
+function playBeepSound() {
+    try {
+        const oscillator = audioContext.createOscillator();
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+        oscillator.connect(audioContext.destination);
+        oscillator.start();
+        oscillator.stop(audioContext.currentTime + 0.1);
+    } catch (error) {
+        console.error('Error playing beep sound:', error);
+    }
+}
+
+function formatDateTime(date) {
+    if (!date) return '-';
+    const d = new Date(date);
+    const options = {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+    };
+    return d.toLocaleString('id-ID', options).replace(',', '');
+}
+
+function formatDateForFile(date) {
+    const d = new Date(date);
+    return `${d.getFullYear()}${padZero(d.getMonth() + 1)}${padZero(d.getDate())}_${padZero(d.getHours())}${padZero(d.getMinutes())}${padZero(d.getSeconds())}`;
+}
+
+function padZero(num) {
+    return num < 10 ? `0${num}` : num;
+}
+
+function showStatus(message, type) {
+    const statusElement = document.getElementById('status');
+    statusElement.textContent = message;
+    statusElement.className = `status ${type}`;
+    statusElement.style.display = 'block';
+    setTimeout(() => {
+        statusElement.style.display = 'none';
+    }, 5000);
+}
+
+function showNotification(message, type) {
+    const notification = document.createElement('div');
+    notification.className = `notification ${type}`;
+    notification.textContent = message;
+    document.body.appendChild(notification);
+    setTimeout(() => {
+        notification.style.animation = 'slideOutRight 0.4s ease';
+        setTimeout(() => {
+            notification.remove();
+        }, 400);
+    }, 3000);
+}
+   </script>
 </body>
 </html>
