@@ -1084,7 +1084,7 @@ let guestVideoTrack = null;
 let mediaStream = null;
 let guestMediaStream = null;
 let currentTableIndex = null;
-let guestStorageKey = null; // Menyimpan kunci penyimpanan tamu berdasarkan guestToken
+let guestStorageKey = null; // Kunci penyimpanan untuk tamu, berdasarkan username pembuat QR
 
 let settings = {
     autoPopup: true,
@@ -1096,39 +1096,30 @@ const STORAGE_KEYS = {
     INVENTORY: 'inventoryData',
     SETTINGS: 'scannerSettings',
     TABLE_HISTORY: 'tableHistory',
-    PIN_DATA: 'pinData',
-    GUEST_TOKEN: 'guestToken',
-    GUEST_INVENTORY_PREFIX: 'guestInventory_',
-    GUEST_TABLE_HISTORY_PREFIX: 'guestTableHistory_'
+    PIN_DATA: 'pinData'
 };
-
-function generateUniqueToken() {
-    return 'guest_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now();
-}
 
 function cekLogin() {
     const username = localStorage.getItem('username');
     const isGuest = localStorage.getItem('isGuest') === 'true';
     const loginTime = localStorage.getItem('guestLoginTime');
     const currentDate = new Date().toISOString().slice(0, 10);
-    const guestToken = localStorage.getItem(STORAGE_KEYS.GUEST_TOKEN);
 
-    if (isGuest && loginTime && guestToken) {
+    if (isGuest && loginTime) {
         const loginDate = new Date(loginTime).toISOString().slice(0, 10);
         if (loginDate !== currentDate) {
             localStorage.removeItem('username');
             localStorage.removeItem('isGuest');
             localStorage.removeItem('guestLoginTime');
             localStorage.removeItem('guestProvider');
-            localStorage.removeItem(STORAGE_KEYS.GUEST_TOKEN);
             showGuestModal();
             return false;
         }
-        // Set kunci penyimpanan tamu berdasarkan guestToken
-        guestStorageKey = STORAGE_KEYS.GUEST_INVENTORY_PREFIX + guestToken;
+        // Set kunci penyimpanan tamu berdasarkan username pembuat QR
+        guestStorageKey = 'guestInventory_' + username;
         const statusElement = document.getElementById('login-status');
         const provider = localStorage.getItem('guestProvider');
-        statusElement.textContent = `Anda masuk sebagai tamu melalui ${provider} (Token: ${guestToken})`;
+        statusElement.textContent = `Anda masuk sebagai tamu melalui ${provider}`;
         statusElement.className = 'status success';
         statusElement.style.display = 'block';
         return true;
@@ -1171,12 +1162,13 @@ function generateQRCode() {
     }
 
     const currentDate = new Date().toISOString().slice(0, 10);
-    const guestToken = generateUniqueToken();
-    const pin = Math.floor(1000 + Math.random() * 9000).toString();
-    const qrData = JSON.stringify({ username, pin, guestToken, mode: 'guest' });
-
     const pinData = JSON.parse(localStorage.getItem(STORAGE_KEYS.PIN_DATA) || '{}');
-    pinData[`${username}-${currentDate}-${guestToken}`] = { pin, guestToken, date: currentDate };
+    const pinKey = `${username}-${currentDate}`;
+
+    let pin = pinData[pinKey] ? pinData[pinKey].pin : Math.floor(1000 + Math.random() * 9000).toString();
+    const qrData = JSON.stringify({ username, pin, mode: 'guest' });
+
+    pinData[pinKey] = { pin, date: currentDate };
     localStorage.setItem(STORAGE_KEYS.PIN_DATA, JSON.stringify(pinData));
 
     const qrCodeElement = document.getElementById('qr-code');
@@ -1239,17 +1231,16 @@ function initializeGuestScanner(videoElement) {
 function validateGuestAccess(qrData) {
     const currentDate = new Date().toISOString().slice(0, 10);
     const pinData = JSON.parse(localStorage.getItem(STORAGE_KEYS.PIN_DATA) || '{}');
-    const pinKey = `${qrData.username}-${currentDate}-${qrData.guestToken}`;
+    const pinKey = `${qrData.username}-${currentDate}`;
 
-    if (pinData[pinKey] && pinData[pinKey].pin === qrData.pin && pinData[pinKey].date === currentDate && pinData[pinKey].guestToken === qrData.guestToken) {
+    if (pinData[pinKey] && pinData[pinKey].pin === qrData.pin && pinData[pinKey].date === currentDate) {
         localStorage.setItem('username', qrData.username);
         localStorage.setItem('isGuest', 'true');
         localStorage.setItem('guestLoginTime', new Date().toISOString());
         localStorage.setItem('guestProvider', qrData.username);
-        localStorage.setItem(STORAGE_KEYS.GUEST_TOKEN, qrData.guestToken);
-        guestStorageKey = STORAGE_KEYS.GUEST_INVENTORY_PREFIX + qrData.guestToken;
+        guestStorageKey = 'guestInventory_' + qrData.username;
         stopGuestScanner();
-        loadGuestData();
+        loadFromLocalStorage();
         window.location.reload();
     } else {
         showNotification('❌ QR code tidak valid atau PIN kadaluarsa!', 'error');
@@ -1416,8 +1407,8 @@ function startScanner() {
             mediaStream.getTracks().forEach(track => track.stop());
             mediaStream = null;
         }
-        navigator.mediaDevices.getUserMedia({
-            video: {
+        navigator.mediaDevices.getUserMedia({ 
+            video: { 
                 facingMode: "environment",
                 width: { ideal: 1280 },
                 height: { ideal: 720 }
@@ -1767,7 +1758,7 @@ function searchInventory(searchTerm) {
         return;
     }
 
-    const filteredItems = Array.from(inventoryData.entries()).filter(([barcode, item]) => {
+    const filteredItems = Array.from(inventoryData.entries()).filter(([barcode, item] ) => {
         const searchLower = searchTerm.toLowerCase();
         const plu = barcode.slice(-4);
         return (
@@ -1895,7 +1886,7 @@ function exportToExcel() {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Inventory");
 
-    const filename = `inventory_${formatDateForFile(new Date())}_${guestStorageKey ? guestStorageKey.split('_')[1] : localStorage.getItem('username')}.xlsx`;
+    const filename = `inventory_${formatDateForFile(new Date())}.xlsx`;
     XLSX.writeFile(wb, filename);
 
     showNotification(`✅ Data berhasil diekspor ke ${filename}`, 'success');
@@ -1923,8 +1914,8 @@ function importFromExcel(input) {
                 const barcode = String(row['Barcode'] || '').trim();
                 if (!barcode) return;
 
-                const timestamp = new Date();
                 const existingItem = inventoryData.get(barcode);
+                const timestamp = new Date();
 
                 if (existingItem) {
                     existingItem.name = row['Nama Produk'] || existingItem.name;
@@ -1966,8 +1957,7 @@ function backupData() {
         scanHistory: scanHistory,
         settings: settings,
         tableHistory: tableHistory,
-        timestamp: new Date().toISOString(),
-        guestToken: localStorage.getItem(STORAGE_KEYS.GUEST_TOKEN) || null
+        timestamp: new Date().toISOString()
     };
 
     const dataStr = JSON.stringify(backupData, null, 2);
@@ -1976,7 +1966,7 @@ function backupData() {
 
     const a = document.createElement('a');
     a.href = url;
-    a.download = `inventory_backup_${formatDateForFile(new Date())}_${guestStorageKey ? guestStorageKey.split('_')[1] : localStorage.getItem('username')}.json`;
+    a.download = `inventory_backup_${formatDateForFile(new Date())}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -1995,14 +1985,6 @@ function restoreData(input) {
     reader.onload = function (e) {
         try {
             const backupData = JSON.parse(e.target.result);
-
-            // Validasi bahwa data restore sesuai dengan guestToken (jika tamu)
-            const isGuest = localStorage.getItem('isGuest') === 'true';
-            const currentGuestToken = localStorage.getItem(STORAGE_KEYS.GUEST_TOKEN);
-            if (isGuest && backupData.guestToken !== currentGuestToken) {
-                showNotification('❌ Data backup tidak sesuai dengan sesi tamu saat ini!', 'error');
-                return;
-            }
 
             if (backupData.inventory) {
                 inventoryData = new Map(Object.entries(backupData.inventory));
@@ -2064,8 +2046,7 @@ function saveTable() {
         creator: username,
         timestamp: timestamp,
         inventory: Object.fromEntries(inventoryData),
-        scanHistory: scanHistory,
-        guestToken: localStorage.getItem(STORAGE_KEYS.GUEST_TOKEN) || null
+        scanHistory: scanHistory
     };
 
     tableHistory.push(tableData);
@@ -2085,14 +2066,6 @@ function viewTable(index) {
     currentTableIndex = index;
     const table = tableHistory[index];
     if (!table) return;
-
-    // Validasi bahwa tamu hanya bisa melihat tabel dengan guestToken yang sesuai
-    const isGuest = localStorage.getItem('isGuest') === 'true';
-    const currentGuestToken = localStorage.getItem(STORAGE_KEYS.GUEST_TOKEN);
-    if (isGuest && table.guestToken !== currentGuestToken) {
-        showNotification('❌ Anda tidak memiliki akses untuk melihat tabel ini!', 'error');
-        return;
-    }
 
     document.getElementById('view-table-title').textContent = `📊 Detail Tabel: ${table.name}`;
     const tbody = document.getElementById('view-table-body');
@@ -2128,14 +2101,6 @@ function confirmRestoreTable() {
     const table = tableHistory[currentTableIndex];
     if (!table) return;
 
-    // Validasi bahwa tamu hanya bisa merestore tabel dengan guestToken yang sesuai
-    const isGuest = localStorage.getItem('isGuest') === 'true';
-    const currentGuestToken = localStorage.getItem(STORAGE_KEYS.GUEST_TOKEN);
-    if (isGuest && table.guestToken !== currentGuestToken) {
-        showNotification('❌ Anda tidak memiliki akses untuk merestore tabel ini!', 'error');
-        return;
-    }
-
     if (confirm(`Yakin ingin merestore tabel "${table.name}"? Data saat ini akan diganti.`)) {
         inventoryData = new Map(Object.entries(table.inventory));
         scanHistory = table.scanHistory;
@@ -2156,24 +2121,18 @@ function exportTable(index) {
     if (!cekLogin()) return;
 
     const table = tableHistory[index];
-    if (!table) return;
-
-    // Validasi bahwa tamu hanya bisa mengekspor tabel dengan guestToken yang sesuai
-    const isGuest = localStorage.getItem('isGuest') === 'true';
-    const currentGuestToken = localStorage.getItem(STORAGE_KEYS.GUEST_TOKEN);
-    if (isGuest && table.guestToken !== currentGuestToken) {
-        showNotification('❌ Anda tidak memiliki akses untuk mengekspor tabel ini!', 'error');
+    if (!table || !table.inventory) {
+        showNotification('❌ Tidak ada data untuk diekspor!', 'error');
         return;
     }
 
     const data = [];
     let idx = 1;
-
     for (const [barcode, item] of Object.entries(table.inventory)) {
         const plu = barcode.slice(-4);
         data.push({
             'No': idx,
-            'Barcode': item.barcode,
+            'Barcode': barcode,
             'PLU': plu,
             'Nama Produk': item.name || '-',
             'Quantity': item.quantity,
@@ -2186,9 +2145,9 @@ function exportTable(index) {
 
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Table");
+    XLSX.utils.book_append_sheet(wb, ws, table.name);
 
-    const filename = `table_${table.name}_${formatDateForFile(new Date())}_${table.guestToken ? table.guestToken.split('_')[1] : table.creator}.xlsx`;
+    const filename = `table_${table.name}_${formatDateForFile(new Date())}.xlsx`;
     XLSX.writeFile(wb, filename);
 
     showNotification(`✅ Tabel "${table.name}" berhasil diekspor ke ${filename}`, 'success');
@@ -2197,28 +2156,20 @@ function exportTable(index) {
 function exportAllTables() {
     if (!cekLogin()) return;
 
-    const isGuest = localStorage.getItem('isGuest') === 'true';
-    const currentGuestToken = localStorage.getItem(STORAGE_KEYS.GUEST_TOKEN);
-    const filteredTables = isGuest
-        ? tableHistory.filter(table => table.guestToken === currentGuestToken)
-        : tableHistory;
-
-    if (filteredTables.length === 0) {
+    if (tableHistory.length === 0) {
         showNotification('❌ Tidak ada tabel untuk diekspor!', 'error');
         return;
     }
 
     const wb = XLSX.utils.book_new();
-
-    filteredTables.forEach((table, index) => {
+    tableHistory.forEach((table, index) => {
         const data = [];
         let idx = 1;
-
         for (const [barcode, item] of Object.entries(table.inventory)) {
             const plu = barcode.slice(-4);
             data.push({
                 'No': idx,
-                'Barcode': item.barcode,
+                'Barcode': barcode,
                 'PLU': plu,
                 'Nama Produk': item.name || '-',
                 'Quantity': item.quantity,
@@ -2228,12 +2179,11 @@ function exportAllTables() {
             });
             idx++;
         }
-
         const ws = XLSX.utils.json_to_sheet(data);
-        XLSX.utils.book_append_sheet(wb, ws, `Table_${table.name}`);
+        XLSX.utils.book_append_sheet(wb, ws, table.name || `Table_${index + 1}`);
     });
 
-    const filename = `all_tables_${formatDateForFile(new Date())}_${guestStorageKey ? guestStorageKey.split('_')[1] : localStorage.getItem('username')}.xlsx`;
+    const filename = `all_tables_${formatDateForFile(new Date())}.xlsx`;
     XLSX.writeFile(wb, filename);
 
     showNotification(`✅ Semua tabel berhasil diekspor ke ${filename}`, 'success');
@@ -2242,91 +2192,56 @@ function exportAllTables() {
 function clearTableHistory() {
     if (!cekLogin()) return;
 
-    const isGuest = localStorage.getItem('isGuest') === 'true';
-    const currentGuestToken = localStorage.getItem(STORAGE_KEYS.GUEST_TOKEN);
-
-    if (confirm('Yakin ingin menghapus SEMUA riwayat tabel? Tindakan ini tidak dapat dibatalkan!')) {
-        if (isGuest) {
-            // Hapus hanya tabel dengan guestToken yang sesuai
-            tableHistory = tableHistory.filter(table => table.guestToken !== currentGuestToken);
-            localStorage.removeItem(STORAGE_KEYS.GUEST_TABLE_HISTORY_PREFIX + currentGuestToken);
-        } else {
-            // Hapus semua tabel untuk pengguna terdaftar
-            tableHistory = [];
-            localStorage.removeItem(STORAGE_KEYS.TABLE_HISTORY);
-        }
+    if (confirm('Yakin ingin menghapus semua riwayat tabel? Tindakan ini tidak dapat dibatalkan!')) {
+        tableHistory = [];
         updateHistoryTable();
         saveTableHistoryToLocalStorage();
-        showNotification('✅ Riwayat tabel berhasil dihapus!', 'success');
+        showNotification('✅ Semua riwayat tabel berhasil dihapus!', 'success');
     }
 }
 
 function updateHistoryTable() {
     const tbody = document.getElementById('history-body');
-    const isGuest = localStorage.getItem('isGuest') === 'true';
-    const currentGuestToken = localStorage.getItem(STORAGE_KEYS.GUEST_TOKEN);
 
-    const filteredTables = isGuest
-        ? tableHistory.filter(table => table.guestToken === currentGuestToken)
-        : tableHistory;
-
-    if (filteredTables.length === 0) {
+    if (tableHistory.length === 0) {
         tbody.innerHTML = '<tr><td colspan="5" class="no-data">Belum ada riwayat tabel.</td></tr>';
         return;
     }
 
     const fragment = document.createDocumentFragment();
-    filteredTables.forEach((table, index) => {
+    let index = 1;
+
+    for (const table of tableHistory) {
         const row = document.createElement('tr');
         row.innerHTML = `
-            <td>${index + 1}</td>
+            <td>${index}</td>
             <td>${table.name}</td>
             <td>${table.creator}</td>
             <td>${formatDateTime(table.timestamp)}</td>
             <td>
-                <button class="view-btn" onclick="viewTable(${tableHistory.indexOf(table)})">👁️</button>
-                <button class="delete-btn" onclick="deleteTable(${tableHistory.indexOf(table)})">🗑️</button>
-                <button class="export-btn" onclick="exportTable(${tableHistory.indexOf(table)})">📥</button>
+                <button class="view-btn" onclick="viewTable(${index - 1})">👁️</button>
+                <button class="restore-btn" onclick="restoreTable(${index - 1})">📂</button>
+                <button class="delete-btn" onclick="deleteTable(${index - 1})">🗑️</button>
+                <button class="export-btn" onclick="exportTable(${index - 1})">📥</button>
             </td>
         `;
         fragment.appendChild(row);
-    });
+        index++;
+    }
 
     tbody.innerHTML = '';
     tbody.appendChild(fragment);
 }
 
-function deleteTable(index) {
-    if (!cekLogin()) return;
+function searchHistory(searchTerm) {
+    const tbody = document.getElementById('history-body');
 
-    const table = tableHistory[index];
-    if (!table) return;
-
-    // Validasi bahwa tamu hanya bisa menghapus tabel dengan guestToken yang sesuai
-    const isGuest = localStorage.getItem('isGuest') === 'true';
-    const currentGuestToken = localStorage.getItem(STORAGE_KEYS.GUEST_TOKEN);
-    if (isGuest && table.guestToken !== currentGuestToken) {
-        showNotification('❌ Anda tidak memiliki akses untuk menghapus tabel ini!', 'error');
+    if (!searchTerm.trim()) {
+        updateHistoryTable();
         return;
     }
 
-    if (confirm(`Yakin ingin menghapus tabel "${tableHistory[index].name}"?`)) {
-        tableHistory.splice(index, 1);
-        updateHistoryTable();
-        saveTableHistoryToLocalStorage();
-        showNotification('✅ Tabel berhasil dihapus!', 'success');
-    }
-}
-
-function searchHistory(searchTerm) {
-    const tbody = document.getElementById('history-body');
-    const isGuest = localStorage.getItem('isGuest') === 'true';
-    const currentGuestToken = localStorage.getItem(STORAGE_KEYS.GUEST_TOKEN);
-
-    const filteredTables = (isGuest
-        ? tableHistory.filter(table => table.guestToken === currentGuestToken)
-        : tableHistory
-    ).filter(table => {
+    const filteredTables = tableHistory.filter(table => {
         const searchLower = searchTerm.toLowerCase();
         return (
             table.name.toLowerCase().includes(searchLower) ||
@@ -2334,119 +2249,176 @@ function searchHistory(searchTerm) {
         );
     });
 
-    if (!searchTerm.trim()) {
-        updateHistoryTable();
-        return;
-    }
-
     if (filteredTables.length === 0) {
         tbody.innerHTML = '<tr><td colspan="5" class="no-data">Tidak ada tabel yang sesuai dengan pencarian.</td></tr>';
         return;
     }
 
     const fragment = document.createDocumentFragment();
-    filteredTables.forEach((table, index) => {
+    let index = 1;
+
+    for (const table of filteredTables) {
         const row = document.createElement('tr');
         row.innerHTML = `
-            <td>${index + 1}</td>
+            <td>${index}</td>
             <td>${table.name}</td>
             <td>${table.creator}</td>
             <td>${formatDateTime(table.timestamp)}</td>
             <td>
                 <button class="view-btn" onclick="viewTable(${tableHistory.indexOf(table)})">👁️</button>
+                <button class="restore-btn" onclick="restoreTable(${tableHistory.indexOf(table)})">📂</button>
                 <button class="delete-btn" onclick="deleteTable(${tableHistory.indexOf(table)})">🗑️</button>
                 <button class="export-btn" onclick="exportTable(${tableHistory.indexOf(table)})">📥</button>
             </td>
         `;
         fragment.appendChild(row);
-    });
+        index++;
+    }
 
     tbody.innerHTML = '';
     tbody.appendChild(fragment);
 }
 
-function toggleSetting(setting) {
-    settings[setting] = !settings[setting];
-    const toggleElement = document.getElementById(`${setting}-toggle`);
-    toggleElement.classList.toggle('active', settings[setting]);
-    saveSettings();
-    showNotification(`✅ ${setting.charAt(0).toUpperCase() + setting.slice(1)} ${settings[setting] ? 'diaktifkan' : 'dinonaktifkan'}`, 'success');
+function restoreTable(index) {
+    if (!cekLogin()) return;
+
+    viewTable(index); // Show the table in popup for confirmation
 }
 
-function loadSettings() {
-    const savedSettings = JSON.parse(localStorage.getItem(STORAGE_KEYS.SETTINGS) || '{}');
-    settings = { ...settings, ...savedSettings };
+function deleteTable(index) {
+    if (!cekLogin()) return;
 
-    for (const [key, value] of Object.entries(settings)) {
-        const toggleElement = document.getElementById(`${key}-toggle`);
-        if (toggleElement) {
-            toggleElement.classList.toggle('active', value);
-        }
+    if (confirm('Yakin ingin menghapus tabel ini dari riwayat?')) {
+        tableHistory.splice(index, 1);
+        updateHistoryTable();
+        saveTableHistoryToLocalStorage();
+        showNotification('✅ Tabel berhasil dihapus dari riwayat!', 'success');
     }
-}
-
-function saveSettings() {
-    localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
-}
-
-function saveToLocalStorage() {
-    const isGuest = localStorage.getItem('isGuest') === 'true';
-    const data = Object.fromEntries(inventoryData);
-    if (isGuest && guestStorageKey) {
-        localStorage.setItem(guestStorageKey, JSON.stringify(data));
-    } else {
-        localStorage.setItem(STORAGE_KEYS.INVENTORY, JSON.stringify(data));
-    }
-}
-
-function clearLocalStorage() {
-    const isGuest = localStorage.getItem('isGuest') === 'true';
-    if (isGuest && guestStorageKey) {
-        localStorage.removeItem(guestStorageKey);
-    } else {
-        localStorage.removeItem(STORAGE_KEYS.INVENTORY);
-    }
-}
-
-function loadFromLocalStorage() {
-    const isGuest = localStorage.getItem('isGuest') === 'true';
-    const storageKey = isGuest && guestStorageKey ? guestStorageKey : STORAGE_KEYS.INVENTORY;
-    const data = JSON.parse(localStorage.getItem(storageKey) || '{}');
-    inventoryData = new Map(Object.entries(data));
 }
 
 function saveTableHistoryToLocalStorage() {
-    const isGuest = localStorage.getItem('isGuest') === 'true';
-    const currentGuestToken = localStorage.getItem(STORAGE_KEYS.GUEST_TOKEN);
-    if (isGuest && currentGuestToken) {
-        const guestTableHistory = tableHistory.filter(table => table.guestToken === currentGuestToken);
-        localStorage.setItem(STORAGE_KEYS.GUEST_TABLE_HISTORY_PREFIX + currentGuestToken, JSON.stringify(guestTableHistory));
-    } else {
-        localStorage.setItem(STORAGE_KEYS.TABLE_HISTORY, JSON.stringify(tableHistory));
+    try {
+        const dataStr = JSON.stringify(tableHistory);
+        localStorage.setItem(STORAGE_KEYS.TABLE_HISTORY, dataStr);
+    } catch (error) {
+        console.error('Error saving table history to localStorage:', error);
+        showNotification('❌ Gagal menyimpan riwayat tabel!', 'error');
     }
 }
 
 function loadTableHistoryFromLocalStorage() {
-    const isGuest = localStorage.getItem('isGuest') === 'true';
-    const currentGuestToken = localStorage.getItem(STORAGE_KEYS.GUEST_TOKEN);
-    if (isGuest && currentGuestToken) {
-        const savedHistory = JSON.parse(localStorage.getItem(STORAGE_KEYS.GUEST_TABLE_HISTORY_PREFIX + currentGuestToken) || '[]');
-        tableHistory = savedHistory;
-    } else {
-        const savedHistory = JSON.parse(localStorage.getItem(STORAGE_KEYS.TABLE_HISTORY) || '[]');
-        tableHistory = savedHistory;
+    try {
+        const dataStr = localStorage.getItem(STORAGE_KEYS.TABLE_HISTORY);
+        if (dataStr) {
+            tableHistory = JSON.parse(dataStr);
+            updateHistoryTable();
+        }
+    } catch (error) {
+        console.error('Error loading table history from localStorage:', error);
+        showNotification('❌ Gagal memuat riwayat tabel!', 'error');
     }
 }
 
-function loadGuestData() {
-    if (guestStorageKey) {
-        const data = JSON.parse(localStorage.getItem(guestStorageKey) || '{}');
-        inventoryData = new Map(Object.entries(data));
-        const tableHistoryData = JSON.parse(localStorage.getItem(STORAGE_KEYS.GUEST_TABLE_HISTORY_PREFIX + localStorage.getItem(STORAGE_KEYS.GUEST_TOKEN)) || '[]');
-        tableHistory = tableHistoryData;
-        updateDisplay();
-        updateHistoryTable();
+function saveToLocalStorage() {
+    try {
+        const dataStr = JSON.stringify(Object.fromEntries(inventoryData));
+        localStorage.setItem(STORAGE_KEYS.INVENTORY, dataStr);
+    } catch (error) {
+        console.error('Error saving inventory to localStorage:', error);
+        showNotification('❌ Gagal menyimpan data inventory!', 'error');
     }
+}
+
+function loadFromLocalStorage() {
+    try {
+        const dataStr = localStorage.getItem(STORAGE_KEYS.INVENTORY);
+        if (dataStr) {
+            const data = JSON.parse(dataStr);
+            inventoryData = new Map(Object.entries(data));
+            updateDisplay();
+        }
+    } catch (error) {
+        console.error('Error loading inventory from localStorage:', error);
+        showNotification('❌ Gagal memuat data inventory!', 'error');
+    }
+}
+
+function clearLocalStorage() {
+    try {
+        localStorage.removeItem(STORAGE_KEYS.INVENTORY);
+        showNotification('✅ Data inventory dihapus dari penyimpanan lokal!', 'success');
+    } catch (error) {
+        console.error('Error clearing localStorage:', error);
+        showNotification('❌ Gagal menghapus data inventory!', 'error');
+    }
+}
+
+function saveSettings() {
+    try {
+        localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
+    } catch (error) {
+        console.error('Error saving settings:', error);
+        showNotification('❌ Gagal menyimpan pengaturan!', 'error');
+    }
+}
+
+function loadSettings() {
+    try {
+        const savedSettings = localStorage.getItem(STORAGE_KEYS.SETTINGS);
+        if (savedSettings) {
+            settings = JSON.parse(savedSettings);
+        }
+        document.getElementById('auto-popup-toggle').classList.toggle('active', settings.autoPopup);
+        document.getElementById('sound-toggle').classList.toggle('active', settings.sound);
+        document.getElementById('vibration-toggle').classList.toggle('active', settings.vibration);
+    } catch (error) {
+        console.error('Error loading settings:', error);
+        showNotification('❌ Gagal memuat pengaturan!', 'error');
+    }
+}
+
+function toggleSetting(setting) {
+    settings[setting] = !settings[setting];
+    saveSettings();
+    document.getElementById(`${setting === 'autoPopup' ? 'auto-popup' : setting}-toggle`).classList.toggle('active');
+    showNotification(`✅ ${setting === 'autoPopup' ? 'Auto Popup' : setting.charAt(0).toUpperCase() + setting.slice(1)} ${settings[setting] ? 'diaktifkan' : 'dinonaktifkan'}`, 'success');
+}
+
+function playBeepSound() {
+    try {
+        const oscillator = audioContext.createOscillator();
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+        oscillator.connect(audioContext.destination);
+        oscillator.start();
+        oscillator.stop(audioContext.currentTime + 0.1);
+    } catch (error) {
+        console.error('Error playing beep sound:', error);
+    }
+}
+
+function formatDateTime(date) {
+    if (!date) return '-';
+    const d = new Date(date);
+    const options = {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+    };
+    return d.toLocaleString('id-ID', options).replace(',', '');
+}
+
+function formatDateForFile(date) {
+    const d = new Date(date);
+    return `${d.getFullYear()}${padZero(d.getMonth() + 1)}${padZero(d.getDate())}_${padZero(d.getHours())}${padZero(d.getMinutes())}${padZero(d.getSeconds())}`;
+}
+
+function padZero(num) {
+    return num < 10 ? `0${num}` : num;
 }
 
 function showStatus(message, type) {
@@ -2454,10 +2426,9 @@ function showStatus(message, type) {
     statusElement.textContent = message;
     statusElement.className = `status ${type}`;
     statusElement.style.display = 'block';
-
     setTimeout(() => {
         statusElement.style.display = 'none';
-    }, 3000);
+    }, 5000);
 }
 
 function showNotification(message, type) {
@@ -2465,48 +2436,17 @@ function showNotification(message, type) {
     notification.className = `notification ${type}`;
     notification.textContent = message;
     document.body.appendChild(notification);
-
     setTimeout(() => {
-        notification.remove();
+        notification.style.animation = 'slideOutRight 0.4s ease';
+        setTimeout(() => {
+            notification.remove();
+        }, 400);
     }, 3000);
 }
 
 function showLoading(show) {
     const loadingElement = document.getElementById('loading');
     loadingElement.style.display = show ? 'block' : 'none';
-}
-
-function playBeepSound() {
-    const oscillator = audioContext.createOscillator();
-    const gainNode = audioContext.createGain();
-
-    oscillator.connect(gainNode);
-    gainNode.connect(audioContext.destination);
-
-    oscillator.type = 'sine';
-    oscillator.frequency.setValueAtTime(440, audioContext.currentTime);
-    gainNode.gain.setValueAtTime(0.5, audioContext.currentTime);
-
-    oscillator.start();
-    setTimeout(() => {
-        oscillator.stop();
-    }, 100);
-}
-
-function formatDateTime(date) {
-    if (!date) return '-';
-    return new Date(date).toLocaleString('id-ID', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit'
-    });
-}
-
-function formatDateForFile(date) {
-    return new Date(date).toISOString().slice(0, 10).replace(/-/g, '');
 }
     </script>
 </body>
