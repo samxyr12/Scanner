@@ -1036,20 +1036,37 @@
         </div>
     </div>
 
-    <div id="qr-modal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2>🔗 QR Code Akses Tamu</h2>
-                <p>Scan QR code ini untuk akses tamu</p>
-            </div>
-            <div id="qr-code" style="text-align: center;"></div>
-            <p style="text-align: center; margin: 1rem 0;">PIN: <span id="access-pin"></span></p>
-            <div class="modal-buttons">
-                <button class="modal-btn confirm" onclick="generateQRCode()">🔄 Buat Ulang QR Code</button>
-                <button class="modal-btn cancel" onclick="closeQRModal()">❌ Tutup</button>
-            </div>
+<div id="qr-modal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>🔗 QR Code Akses Tamu</h2>
+            <p>Gunakan QR code ini untuk login sebagai tamu di perangkat lain</p>
+        </div>
+        <div id="qr-code" style="text-align: center;"></div>
+        <p style="text-align: center; font-weight: 600;">PIN: <span id="access-pin"></span></p>
+        <div class="modal-buttons">
+            <button class="modal-btn confirm" onclick="generateQRCode()">🔄 Buat Ulang QR Code</button>
+            <button class="modal-btn cancel" onclick="closeQRModal()">❌ Tutup</button>
         </div>
     </div>
+</div>
+
+<div id="guest-scanner-modal" class="modal">
+    <div class="modal-content wide">
+        <div class="modal-header">
+            <h2>🔍 Scan QR Code Tamu</h2>
+            <p>Arahkan kamera ke QR code untuk masuk sebagai tamu</p>
+        </div>
+        <div id="guest-scanner-container">
+            <video id="guest-interactive" muted playsinline></video>
+            <div class="scan-line" id="guest-scan-line"></div>
+        </div>
+        <div class="controls">
+            <button id="guest-stop-btn" class="btn stop">⏹️ Stop Scan</button>
+            <button onclick="toggleGuestFlashlight()" class="btn">🔦 Flash</button>
+        </div>
+    </div>
+</div>
 
     <script>
 const audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -1067,6 +1084,7 @@ let guestVideoTrack = null;
 let mediaStream = null;
 let guestMediaStream = null;
 let currentTableIndex = null;
+let guestStorageKey = null; // Menyimpan kunci penyimpanan tamu berdasarkan guestToken
 
 let settings = {
     autoPopup: true,
@@ -1078,39 +1096,49 @@ const STORAGE_KEYS = {
     INVENTORY: 'inventoryData',
     SETTINGS: 'scannerSettings',
     TABLE_HISTORY: 'tableHistory',
-    PIN_DATA: 'pinData'
+    PIN_DATA: 'pinData',
+    GUEST_TOKEN: 'guestToken',
+    GUEST_INVENTORY_PREFIX: 'guestInventory_',
+    GUEST_TABLE_HISTORY_PREFIX: 'guestTableHistory_'
 };
+
+function generateUniqueToken() {
+    return 'guest_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now();
+}
 
 function cekLogin() {
     const username = localStorage.getItem('username');
     const isGuest = localStorage.getItem('isGuest') === 'true';
     const loginTime = localStorage.getItem('guestLoginTime');
     const currentDate = new Date().toISOString().slice(0, 10);
+    const guestToken = localStorage.getItem(STORAGE_KEYS.GUEST_TOKEN);
 
-    if (isGuest && loginTime) {
+    if (isGuest && loginTime && guestToken) {
         const loginDate = new Date(loginTime).toISOString().slice(0, 10);
         if (loginDate !== currentDate) {
             localStorage.removeItem('username');
             localStorage.removeItem('isGuest');
             localStorage.removeItem('guestLoginTime');
             localStorage.removeItem('guestProvider');
+            localStorage.removeItem(STORAGE_KEYS.GUEST_TOKEN);
             showGuestModal();
             return false;
         }
-    }
-
-    if (username) {
+        // Set kunci penyimpanan tamu berdasarkan guestToken
+        guestStorageKey = STORAGE_KEYS.GUEST_INVENTORY_PREFIX + guestToken;
         const statusElement = document.getElementById('login-status');
         const provider = localStorage.getItem('guestProvider');
-        if (isGuest && provider) {
-            statusElement.textContent = `Anda masuk sebagai tamu melalui ${provider}`;
-            statusElement.className = 'status success';
-        } else {
-            statusElement.textContent = `Anda sudah login sebagai ${username}`;
-            statusElement.className = 'status success';
-            document.getElementById('qr-section').style.display = 'block';
-        }
+        statusElement.textContent = `Anda masuk sebagai tamu melalui ${provider} (Token: ${guestToken})`;
+        statusElement.className = 'status success';
         statusElement.style.display = 'block';
+        return true;
+    } else if (username) {
+        guestStorageKey = null; // Reset untuk pengguna terdaftar
+        const statusElement = document.getElementById('login-status');
+        statusElement.textContent = `Anda sudah login sebagai ${username}`;
+        statusElement.className = 'status success';
+        statusElement.style.display = 'block';
+        document.getElementById('qr-section').style.display = 'block';
         return true;
     } else {
         showGuestModal();
@@ -1143,11 +1171,12 @@ function generateQRCode() {
     }
 
     const currentDate = new Date().toISOString().slice(0, 10);
+    const guestToken = generateUniqueToken();
     const pin = Math.floor(1000 + Math.random() * 9000).toString();
-    const qrData = JSON.stringify({ username, pin });
+    const qrData = JSON.stringify({ username, pin, guestToken, mode: 'guest' });
 
     const pinData = JSON.parse(localStorage.getItem(STORAGE_KEYS.PIN_DATA) || '{}');
-    pinData[`${username}-${currentDate}`] = { pin, date: currentDate };
+    pinData[`${username}-${currentDate}-${guestToken}`] = { pin, guestToken, date: currentDate };
     localStorage.setItem(STORAGE_KEYS.PIN_DATA, JSON.stringify(pinData));
 
     const qrCodeElement = document.getElementById('qr-code');
@@ -1189,7 +1218,11 @@ function initializeGuestScanner(videoElement) {
         if (result) {
             try {
                 const qrData = JSON.parse(result.text);
-                validateGuestAccess(qrData);
+                if (qrData.mode === 'guest') {
+                    validateGuestAccess(qrData);
+                } else {
+                    showNotification('❌ QR code tidak valid untuk mode tamu!', 'error');
+                }
             } catch (e) {
                 showNotification('❌ QR code tidak valid!', 'error');
             }
@@ -1206,14 +1239,17 @@ function initializeGuestScanner(videoElement) {
 function validateGuestAccess(qrData) {
     const currentDate = new Date().toISOString().slice(0, 10);
     const pinData = JSON.parse(localStorage.getItem(STORAGE_KEYS.PIN_DATA) || '{}');
-    const pinKey = `${qrData.username}-${currentDate}`;
+    const pinKey = `${qrData.username}-${currentDate}-${qrData.guestToken}`;
 
-    if (pinData[pinKey] && pinData[pinKey].pin === qrData.pin && pinData[pinKey].date === currentDate) {
+    if (pinData[pinKey] && pinData[pinKey].pin === qrData.pin && pinData[pinKey].date === currentDate && pinData[pinKey].guestToken === qrData.guestToken) {
         localStorage.setItem('username', qrData.username);
         localStorage.setItem('isGuest', 'true');
         localStorage.setItem('guestLoginTime', new Date().toISOString());
         localStorage.setItem('guestProvider', qrData.username);
+        localStorage.setItem(STORAGE_KEYS.GUEST_TOKEN, qrData.guestToken);
+        guestStorageKey = STORAGE_KEYS.GUEST_INVENTORY_PREFIX + qrData.guestToken;
         stopGuestScanner();
+        loadGuestData();
         window.location.reload();
     } else {
         showNotification('❌ QR code tidak valid atau PIN kadaluarsa!', 'error');
@@ -1859,7 +1895,7 @@ function exportToExcel() {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Inventory");
 
-    const filename = `inventory_${formatDateForFile(new Date())}.xlsx`;
+    const filename = `inventory_${formatDateForFile(new Date())}_${guestStorageKey ? guestStorageKey.split('_')[1] : localStorage.getItem('username')}.xlsx`;
     XLSX.writeFile(wb, filename);
 
     showNotification(`✅ Data berhasil diekspor ke ${filename}`, 'success');
@@ -1887,8 +1923,8 @@ function importFromExcel(input) {
                 const barcode = String(row['Barcode'] || '').trim();
                 if (!barcode) return;
 
-                const existingItem = inventoryData.get(barcode);
                 const timestamp = new Date();
+                const existingItem = inventoryData.get(barcode);
 
                 if (existingItem) {
                     existingItem.name = row['Nama Produk'] || existingItem.name;
@@ -1930,7 +1966,8 @@ function backupData() {
         scanHistory: scanHistory,
         settings: settings,
         tableHistory: tableHistory,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        guestToken: localStorage.getItem(STORAGE_KEYS.GUEST_TOKEN) || null
     };
 
     const dataStr = JSON.stringify(backupData, null, 2);
@@ -1939,7 +1976,7 @@ function backupData() {
 
     const a = document.createElement('a');
     a.href = url;
-    a.download = `inventory_backup_${formatDateForFile(new Date())}.json`;
+    a.download = `inventory_backup_${formatDateForFile(new Date())}_${guestStorageKey ? guestStorageKey.split('_')[1] : localStorage.getItem('username')}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -1958,6 +1995,14 @@ function restoreData(input) {
     reader.onload = function (e) {
         try {
             const backupData = JSON.parse(e.target.result);
+
+            // Validasi bahwa data restore sesuai dengan guestToken (jika tamu)
+            const isGuest = localStorage.getItem('isGuest') === 'true';
+            const currentGuestToken = localStorage.getItem(STORAGE_KEYS.GUEST_TOKEN);
+            if (isGuest && backupData.guestToken !== currentGuestToken) {
+                showNotification('❌ Data backup tidak sesuai dengan sesi tamu saat ini!', 'error');
+                return;
+            }
 
             if (backupData.inventory) {
                 inventoryData = new Map(Object.entries(backupData.inventory));
@@ -2019,7 +2064,8 @@ function saveTable() {
         creator: username,
         timestamp: timestamp,
         inventory: Object.fromEntries(inventoryData),
-        scanHistory: scanHistory
+        scanHistory: scanHistory,
+        guestToken: localStorage.getItem(STORAGE_KEYS.GUEST_TOKEN) || null
     };
 
     tableHistory.push(tableData);
@@ -2039,6 +2085,14 @@ function viewTable(index) {
     currentTableIndex = index;
     const table = tableHistory[index];
     if (!table) return;
+
+    // Validasi bahwa tamu hanya bisa melihat tabel dengan guestToken yang sesuai
+    const isGuest = localStorage.getItem('isGuest') === 'true';
+    const currentGuestToken = localStorage.getItem(STORAGE_KEYS.GUEST_TOKEN);
+    if (isGuest && table.guestToken !== currentGuestToken) {
+        showNotification('❌ Anda tidak memiliki akses untuk melihat tabel ini!', 'error');
+        return;
+    }
 
     document.getElementById('view-table-title').textContent = `📊 Detail Tabel: ${table.name}`;
     const tbody = document.getElementById('view-table-body');
@@ -2074,6 +2128,14 @@ function confirmRestoreTable() {
     const table = tableHistory[currentTableIndex];
     if (!table) return;
 
+    // Validasi bahwa tamu hanya bisa merestore tabel dengan guestToken yang sesuai
+    const isGuest = localStorage.getItem('isGuest') === 'true';
+    const currentGuestToken = localStorage.getItem(STORAGE_KEYS.GUEST_TOKEN);
+    if (isGuest && table.guestToken !== currentGuestToken) {
+        showNotification('❌ Anda tidak memiliki akses untuk merestore tabel ini!', 'error');
+        return;
+    }
+
     if (confirm(`Yakin ingin merestore tabel "${table.name}"? Data saat ini akan diganti.`)) {
         inventoryData = new Map(Object.entries(table.inventory));
         scanHistory = table.scanHistory;
@@ -2095,6 +2157,14 @@ function exportTable(index) {
 
     const table = tableHistory[index];
     if (!table) return;
+
+    // Validasi bahwa tamu hanya bisa mengekspor tabel dengan guestToken yang sesuai
+    const isGuest = localStorage.getItem('isGuest') === 'true';
+    const currentGuestToken = localStorage.getItem(STORAGE_KEYS.GUEST_TOKEN);
+    if (isGuest && table.guestToken !== currentGuestToken) {
+        showNotification('❌ Anda tidak memiliki akses untuk mengekspor tabel ini!', 'error');
+        return;
+    }
 
     const data = [];
     let idx = 1;
@@ -2118,7 +2188,7 @@ function exportTable(index) {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Table");
 
-    const filename = `table_${table.name}_${formatDateForFile(new Date())}.xlsx`;
+    const filename = `table_${table.name}_${formatDateForFile(new Date())}_${table.guestToken ? table.guestToken.split('_')[1] : table.creator}.xlsx`;
     XLSX.writeFile(wb, filename);
 
     showNotification(`✅ Tabel "${table.name}" berhasil diekspor ke ${filename}`, 'success');
@@ -2127,14 +2197,20 @@ function exportTable(index) {
 function exportAllTables() {
     if (!cekLogin()) return;
 
-    if (tableHistory.length === 0) {
+    const isGuest = localStorage.getItem('isGuest') === 'true';
+    const currentGuestToken = localStorage.getItem(STORAGE_KEYS.GUEST_TOKEN);
+    const filteredTables = isGuest
+        ? tableHistory.filter(table => table.guestToken === currentGuestToken)
+        : tableHistory;
+
+    if (filteredTables.length === 0) {
         showNotification('❌ Tidak ada tabel untuk diekspor!', 'error');
         return;
     }
 
     const wb = XLSX.utils.book_new();
 
-    tableHistory.forEach((table, index) => {
+    filteredTables.forEach((table, index) => {
         const data = [];
         let idx = 1;
 
@@ -2157,7 +2233,7 @@ function exportAllTables() {
         XLSX.utils.book_append_sheet(wb, ws, `Table_${table.name}`);
     });
 
-    const filename = `all_tables_${formatDateForFile(new Date())}.xlsx`;
+    const filename = `all_tables_${formatDateForFile(new Date())}_${guestStorageKey ? guestStorageKey.split('_')[1] : localStorage.getItem('username')}.xlsx`;
     XLSX.writeFile(wb, filename);
 
     showNotification(`✅ Semua tabel berhasil diekspor ke ${filename}`, 'success');
@@ -2166,8 +2242,19 @@ function exportAllTables() {
 function clearTableHistory() {
     if (!cekLogin()) return;
 
+    const isGuest = localStorage.getItem('isGuest') === 'true';
+    const currentGuestToken = localStorage.getItem(STORAGE_KEYS.GUEST_TOKEN);
+
     if (confirm('Yakin ingin menghapus SEMUA riwayat tabel? Tindakan ini tidak dapat dibatalkan!')) {
-        tableHistory = [];
+        if (isGuest) {
+            // Hapus hanya tabel dengan guestToken yang sesuai
+            tableHistory = tableHistory.filter(table => table.guestToken !== currentGuestToken);
+            localStorage.removeItem(STORAGE_KEYS.GUEST_TABLE_HISTORY_PREFIX + currentGuestToken);
+        } else {
+            // Hapus semua tabel untuk pengguna terdaftar
+            tableHistory = [];
+            localStorage.removeItem(STORAGE_KEYS.TABLE_HISTORY);
+        }
         updateHistoryTable();
         saveTableHistoryToLocalStorage();
         showNotification('✅ Riwayat tabel berhasil dihapus!', 'success');
@@ -2176,14 +2263,20 @@ function clearTableHistory() {
 
 function updateHistoryTable() {
     const tbody = document.getElementById('history-body');
+    const isGuest = localStorage.getItem('isGuest') === 'true';
+    const currentGuestToken = localStorage.getItem(STORAGE_KEYS.GUEST_TOKEN);
 
-    if (tableHistory.length === 0) {
+    const filteredTables = isGuest
+        ? tableHistory.filter(table => table.guestToken === currentGuestToken)
+        : tableHistory;
+
+    if (filteredTables.length === 0) {
         tbody.innerHTML = '<tr><td colspan="5" class="no-data">Belum ada riwayat tabel.</td></tr>';
         return;
     }
 
     const fragment = document.createDocumentFragment();
-    tableHistory.forEach((table, index) => {
+    filteredTables.forEach((table, index) => {
         const row = document.createElement('tr');
         row.innerHTML = `
             <td>${index + 1}</td>
@@ -2191,9 +2284,9 @@ function updateHistoryTable() {
             <td>${table.creator}</td>
             <td>${formatDateTime(table.timestamp)}</td>
             <td>
-                <button class="view-btn" onclick="viewTable(${index})">👁️</button>
-                <button class="delete-btn" onclick="deleteTable(${index})">🗑️</button>
-                <button class="export-btn" onclick="exportTable(${index})">📥</button>
+                <button class="view-btn" onclick="viewTable(${tableHistory.indexOf(table)})">👁️</button>
+                <button class="delete-btn" onclick="deleteTable(${tableHistory.indexOf(table)})">🗑️</button>
+                <button class="export-btn" onclick="exportTable(${tableHistory.indexOf(table)})">📥</button>
             </td>
         `;
         fragment.appendChild(row);
@@ -2206,6 +2299,17 @@ function updateHistoryTable() {
 function deleteTable(index) {
     if (!cekLogin()) return;
 
+    const table = tableHistory[index];
+    if (!table) return;
+
+    // Validasi bahwa tamu hanya bisa menghapus tabel dengan guestToken yang sesuai
+    const isGuest = localStorage.getItem('isGuest') === 'true';
+    const currentGuestToken = localStorage.getItem(STORAGE_KEYS.GUEST_TOKEN);
+    if (isGuest && table.guestToken !== currentGuestToken) {
+        showNotification('❌ Anda tidak memiliki akses untuk menghapus tabel ini!', 'error');
+        return;
+    }
+
     if (confirm(`Yakin ingin menghapus tabel "${tableHistory[index].name}"?`)) {
         tableHistory.splice(index, 1);
         updateHistoryTable();
@@ -2216,19 +2320,24 @@ function deleteTable(index) {
 
 function searchHistory(searchTerm) {
     const tbody = document.getElementById('history-body');
+    const isGuest = localStorage.getItem('isGuest') === 'true';
+    const currentGuestToken = localStorage.getItem(STORAGE_KEYS.GUEST_TOKEN);
 
-    if (!searchTerm.trim()) {
-        updateHistoryTable();
-        return;
-    }
-
-    const filteredTables = tableHistory.filter(table => {
+    const filteredTables = (isGuest
+        ? tableHistory.filter(table => table.guestToken === currentGuestToken)
+        : tableHistory
+    ).filter(table => {
         const searchLower = searchTerm.toLowerCase();
         return (
             table.name.toLowerCase().includes(searchLower) ||
             table.creator.toLowerCase().includes(searchLower)
         );
     });
+
+    if (!searchTerm.trim()) {
+        updateHistoryTable();
+        return;
+    }
 
     if (filteredTables.length === 0) {
         tbody.innerHTML = '<tr><td colspan="5" class="no-data">Tidak ada tabel yang sesuai dengan pencarian.</td></tr>';
@@ -2244,9 +2353,9 @@ function searchHistory(searchTerm) {
             <td>${table.creator}</td>
             <td>${formatDateTime(table.timestamp)}</td>
             <td>
-                <button class="view-btn" onclick="viewTable(${index})">👁️</button>
-                <button class="delete-btn" onclick="deleteTable(${index})">🗑️</button>
-                <button class="export-btn" onclick="exportTable(${index})">📥</button>
+                <button class="view-btn" onclick="viewTable(${tableHistory.indexOf(table)})">👁️</button>
+                <button class="delete-btn" onclick="deleteTable(${tableHistory.indexOf(table)})">🗑️</button>
+                <button class="export-btn" onclick="exportTable(${tableHistory.indexOf(table)})">📥</button>
             </td>
         `;
         fragment.appendChild(row);
@@ -2281,26 +2390,63 @@ function saveSettings() {
 }
 
 function saveToLocalStorage() {
+    const isGuest = localStorage.getItem('isGuest') === 'true';
     const data = Object.fromEntries(inventoryData);
-    localStorage.setItem(STORAGE_KEYS.INVENTORY, JSON.stringify(data));
+    if (isGuest && guestStorageKey) {
+        localStorage.setItem(guestStorageKey, JSON.stringify(data));
+    } else {
+        localStorage.setItem(STORAGE_KEYS.INVENTORY, JSON.stringify(data));
+    }
 }
 
 function clearLocalStorage() {
-    localStorage.removeItem(STORAGE_KEYS.INVENTORY);
+    const isGuest = localStorage.getItem('isGuest') === 'true';
+    if (isGuest && guestStorageKey) {
+        localStorage.removeItem(guestStorageKey);
+    } else {
+        localStorage.removeItem(STORAGE_KEYS.INVENTORY);
+    }
 }
 
 function loadFromLocalStorage() {
-    const data = JSON.parse(localStorage.getItem(STORAGE_KEYS.INVENTORY) || '{}');
+    const isGuest = localStorage.getItem('isGuest') === 'true';
+    const storageKey = isGuest && guestStorageKey ? guestStorageKey : STORAGE_KEYS.INVENTORY;
+    const data = JSON.parse(localStorage.getItem(storageKey) || '{}');
     inventoryData = new Map(Object.entries(data));
 }
 
 function saveTableHistoryToLocalStorage() {
-    localStorage.setItem(STORAGE_KEYS.TABLE_HISTORY, JSON.stringify(tableHistory));
+    const isGuest = localStorage.getItem('isGuest') === 'true';
+    const currentGuestToken = localStorage.getItem(STORAGE_KEYS.GUEST_TOKEN);
+    if (isGuest && currentGuestToken) {
+        const guestTableHistory = tableHistory.filter(table => table.guestToken === currentGuestToken);
+        localStorage.setItem(STORAGE_KEYS.GUEST_TABLE_HISTORY_PREFIX + currentGuestToken, JSON.stringify(guestTableHistory));
+    } else {
+        localStorage.setItem(STORAGE_KEYS.TABLE_HISTORY, JSON.stringify(tableHistory));
+    }
 }
 
 function loadTableHistoryFromLocalStorage() {
-    const savedHistory = JSON.parse(localStorage.getItem(STORAGE_KEYS.TABLE_HISTORY) || '[]');
-    tableHistory = savedHistory;
+    const isGuest = localStorage.getItem('isGuest') === 'true';
+    const currentGuestToken = localStorage.getItem(STORAGE_KEYS.GUEST_TOKEN);
+    if (isGuest && currentGuestToken) {
+        const savedHistory = JSON.parse(localStorage.getItem(STORAGE_KEYS.GUEST_TABLE_HISTORY_PREFIX + currentGuestToken) || '[]');
+        tableHistory = savedHistory;
+    } else {
+        const savedHistory = JSON.parse(localStorage.getItem(STORAGE_KEYS.TABLE_HISTORY) || '[]');
+        tableHistory = savedHistory;
+    }
+}
+
+function loadGuestData() {
+    if (guestStorageKey) {
+        const data = JSON.parse(localStorage.getItem(guestStorageKey) || '{}');
+        inventoryData = new Map(Object.entries(data));
+        const tableHistoryData = JSON.parse(localStorage.getItem(STORAGE_KEYS.GUEST_TABLE_HISTORY_PREFIX + localStorage.getItem(STORAGE_KEYS.GUEST_TOKEN)) || '[]');
+        tableHistory = tableHistoryData;
+        updateDisplay();
+        updateHistoryTable();
+    }
 }
 
 function showStatus(message, type) {
