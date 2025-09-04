@@ -1,0 +1,2496 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+ 
+    <title>Scanner Barcode & QR Code & Inventory Pro</title>
+    <script src="https://unpkg.com/@zxing/library@latest/umd/index.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.4.4/build/qrcode.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', 'Arial', sans-serif;
+            background: linear-gradient(135deg, #E6F0FA 0%, #D6EAF8 100%);
+            min-height: 100vh;
+            padding: 2rem;
+            color: #2D3748;
+        }
+
+        .container {
+            max-width: 1500px;
+            width: 95%;
+            margin: 0 auto;
+            background: #FFFFFF;
+            border-radius: 20px;
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(45deg, #3182CE, #2B6CB0);
+            color: white;
+            padding: 2.5rem;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: clamp(2rem, 4.5vw, 2.8rem);
+            margin-bottom: 0.5rem;
+            font-weight: 700;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        .header p {
+            font-size: clamp(1rem, 2vw, 1.3rem);
+            opacity: 0.9;
+            font-weight: 300;
+        }
+
+        .content {
+            padding: clamp(1.5rem, 3vw, 2.5rem);
+        }
+
+        .scanner-section, .table-section, .settings-section, .history-section, .qr-section {
+            background: #F7FAFC;
+            border-radius: 15px;
+            padding: clamp(1.5rem, 2.5vw, 2rem);
+            margin-bottom: 2rem;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.05);
+            transition: transform 0.3s ease;
+        }
+
+        .scanner-section:hover, .table-section:hover, .settings-section:hover, .history-section:hover, .qr-section:hover {
+            transform: translateY(-5px);
+        }
+
+        .controls {
+            display: flex;
+            gap: 1.2rem;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .btn {
+            background: linear-gradient(45deg, #3182CE, #2B6CB0);
+            color: white;
+            border: none;
+            padding: 0.9rem 1.8rem;
+            border-radius: 30px;
+            cursor: pointer;
+            font-size: clamp(0.95rem, 1.6vw, 1.1rem);
+            font-weight: 600;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        .btn:hover {
+            transform: translateY(-3px);
+            background: linear-gradient(45deg, #4299E1, #3182CE);
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.15);
+        }
+
+        .btn:disabled {
+            background: #A0AEC0;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn.stop { background: linear-gradient(45deg, #F56565, #E53E3E); }
+        .btn.export { background: linear-gradient(45deg, #38B2AC, #319795); }
+        .btn.import { background: linear-gradient(45deg, #63B3ED, #4299E1); }
+        .btn.clear { background: linear-gradient(45deg, #2C5282, #2A4365); }
+        .btn.save { background: linear-gradient(45deg, #48BB78, #38A169); }
+        .btn.view { background: linear-gradient(45deg, #805AD5, #6B46C1); }
+
+        #scanner-container {
+            position: relative;
+            width: 100%;
+            max-width: clamp(600px, 65vw, 1000px);
+            margin: 0 auto;
+            background: #1A202C;
+            border-radius: 12px;
+            overflow: hidden;
+            aspect-ratio: 4 / 3;
+        }
+
+        #interactive {
+            width: 100%;
+            height: 100%;
+            display: block;
+            object-fit: cover;
+        }
+
+        .scan-line {
+            position: absolute;
+            top: 10%;
+            left: 5%;
+            right: 5%;
+            height: 4px;
+            background: #63B3ED;
+            animation: scanning 1.5s linear infinite;
+            z-index: 1000;
+        }
+
+        @keyframes scanning {
+            0% { top: 10%; }
+            50% { top: 50%; }
+            100% { top: 90%; }
+        }
+
+        .manual-input {
+            background: #EDF2F7;
+            border-radius: 12px;
+            padding: 1.8rem;
+            margin: 1.5rem 0;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.05);
+        }
+
+        .input-group {
+            display: grid;
+            grid-template-columns: 2fr 1fr 1fr auto;
+            gap: 1rem;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .input-group input,
+        .input-group select {
+            padding: 0.7rem 1.2rem;
+            border: 2px solid #CBD5E0;
+            border-radius: 10px;
+            font-size: clamp(0.95rem, 1.6vw, 1.1rem);
+            transition: border-color 0.3s, box-shadow 0.3s;
+        }
+
+        .input-group input:focus,
+        .input-group select:focus {
+            border-color: #3182CE;
+            box-shadow: 0 0 8px rgba(49, 130, 206, 0.3);
+            outline: none;
+        }
+
+        .status {
+            text-align: center;
+            margin: 1.5rem 0;
+            padding: 1.2rem;
+            border-radius: 12px;
+            font-weight: 600;
+            font-size: clamp(0.95rem, 1.6vw, 1.1rem);
+        }
+
+        .status.success { background: linear-gradient(45deg, #48BB78, #38A169); color: white; }
+        .status.error { background: linear-gradient(45deg, #F56565, #E53E3E); color: white; }
+        .status.info { background: linear-gradient(45deg, #63B3ED, #4299E1); color: white; }
+
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 10000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(8px);
+        }
+
+        .modal-content {
+            background-color: #FFFFFF;
+            margin: clamp(5%, 10vh, 15%) auto;
+            padding: clamp(1.5rem, 2.5vw, 2rem);
+            border-radius: 20px;
+            width: 90%;
+            max-width: clamp(500px, 60vw, 800px);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
+            animation: modalSlideIn 0.4s ease;
+        }
+
+        .modal-content.wide {
+            max-width: clamp(700px, 80vw, 1200px);
+        }
+
+        @keyframes modalSlideIn {
+            from { opacity: 0; transform: translateY(-50px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .modal-header {
+            text-align: center;
+            margin-bottom: 1.8rem;
+        }
+
+        .modal-header h2 {
+            color: #2B6CB0;
+            font-size: clamp(1.5rem, 3vw, 2rem);
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+
+        .barcode-display {
+            background: linear-gradient(45deg, #63B3ED, #4299E1);
+            color: white;
+            padding: 1.2rem;
+            border-radius: 12px;
+            font-family: 'Courier New', monospace;
+            font-size: clamp(1.1rem, 2vw, 1.3rem);
+            font-weight: bold;
+            text-align: center;
+            margin-bottom: 1.8rem;
+            word-break: break-all;
+        }
+
+        .quantity-input-group {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 1.2rem;
+            margin-bottom: 1.8rem;
+        }
+
+        .qty-btn {
+            background: #F56565;
+            color: white;
+            border: none;
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            font-size: 1.4rem;
+            font-weight: bold;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+        }
+
+        .qty-btn.plus {
+            background: #48BB78;
+        }
+
+        .qty-btn:hover {
+            transform: scale(1.1);
+        }
+
+        .qty-input {
+            width: 100px;
+            height: 48px;
+            text-align: center;
+            border: 2px solid #CBD5E0;
+            border-radius: 10px;
+            font-size: 1.3rem;
+            font-weight: bold;
+        }
+
+        .modal-buttons {
+            display: flex;
+            gap: 1.2rem;
+            justify-content: center;
+        }
+
+        .modal-btn {
+            padding: 0.9rem 1.8rem;
+            border: none;
+            border-radius: 30px;
+            font-size: clamp(0.95rem, 1.6vw, 1.1rem);
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .modal-btn.confirm { background: linear-gradient(45deg, #48BB78, #38A169); color: white; }
+        .modal-btn.cancel { background: linear-gradient(45deg, #F56565, #E53E3E); color: white; }
+        .modal-btn:hover { transform: translateY(-2px); }
+
+        .table-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.8rem;
+            flex-wrap: wrap;
+            gap: 1.2rem;
+        }
+
+        .search-box {
+            flex: 1;
+            max-width: 500px;
+            padding: 0.7rem 1.2rem;
+            border: 2px solid #CBD5E0;
+            border-radius: 30px;
+            font-size: clamp(0.95rem, 1.6vw, 1.1rem);
+            transition: border-color 0.3s, box-shadow 0.3s;
+        }
+
+        .search-box:focus {
+            border-color: #3182CE;
+            box-shadow: 0 0 8px rgba(49, 130, 206, 0.3);
+            outline: none;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 1.2rem;
+            margin-bottom: 1.8rem;
+        }
+
+        .stat-card {
+            background: linear-gradient(45deg, #63B3ED, #4299E1);
+            color: white;
+            padding: 1.8rem;
+            border-radius: 12px;
+            text-align: center;
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        .stat-card h3 {
+            font-size: clamp(1.8rem, 3.5vw, 2.2rem);
+            margin-bottom: 0.4rem;
+            font-weight: 700;
+        }
+
+        .table-container {
+            overflow-x: auto;
+            border-radius: 12px;
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.05);
+            max-height: 700px;
+            overflow-y: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+        }
+
+        th, td {
+            padding: 1.2rem;
+            text-align: left;
+            border-bottom: 1px solid #EDF2F7;
+        }
+
+        th {
+            background: linear-gradient(45deg, #3182CE, #2B6CB0);
+            color: white;
+            font-weight: 700;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        tr:hover {
+            background: #EBF8FF;
+        }
+
+        tr:nth-child(even) {
+            background: #F7FAFC;
+        }
+
+        .delete-btn, .edit-btn, .restore-btn, .view-btn {
+            background: #F56565;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            margin-right: 0.6rem;
+            transition: all 0.3s ease;
+        }
+
+        .edit-btn { background: #3182CE; }
+        .restore-btn { background: #48BB78; }
+        .view-btn { background: #805AD5; }
+
+        .delete-btn:hover { background: #E53E3E; }
+        .edit-btn:hover { background: #2B6CB0; }
+        .restore-btn:hover { background: #38A169; }
+        .view-btn:hover { background: #6B46C1; }
+
+        .no-data {
+            text-align: center;
+            padding: 3.5rem;
+            color: #718096;
+            font-style: italic;
+            font-size: clamp(1rem, 2vw, 1.2rem);
+        }
+
+        .settings-section .setting-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1.2rem 0;
+            border-bottom: 1px solid #EDF2F7;
+        }
+
+        .setting-item:last-child {
+            border-bottom: none;
+        }
+
+        .toggle {
+            position: relative;
+            width: 60px;
+            height: 30px;
+            background: #A0AEC0;
+            border-radius: 30px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        .toggle.active {
+            background: #3182CE;
+        }
+
+        .toggle::after {
+            content: '';
+            position: absolute;
+            top: 3px;
+            left: 3px;
+            width: 24px;
+            height: 24px;
+            background: white;
+            border-radius: 50%;
+            transition: transform 0.3s;
+        }
+
+        .toggle.active::after {
+            transform: translateX(30px);
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 1.8rem;
+        }
+
+        .spinner {
+            border: 5px solid #EDF2F7;
+            border-top: 5px solid #3182CE;
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 0.6rem;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .notification {
+            position: fixed;
+            top: 1.5rem;
+            right: 1.5rem;
+            padding: 1.2rem 1.8rem;
+            border-radius: 12px;
+            color: white;
+            font-weight: 600;
+            z-index: 10001;
+            animation: slideInRight 0.4s ease;
+        }
+
+        .notification.success { background: #48BB78; }
+        .notification.error { background: #F56565; }
+        .notification.info { background: #3182CE; }
+
+        @keyframes slideInRight {
+            from { opacity: 0; transform: translateX(100px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+
+        .file-input {
+            display: none;
+        }
+
+        .backup-section {
+            margin-top: 1.8rem;
+            padding: 1.8rem;
+            background: #F7FAFC;
+            border-radius: 12px;
+        }
+
+        #scanner-modal .modal-content {
+            max-width: clamp(800px, 85vw, 1200px);
+            padding: 1rem;
+        }
+
+        #scanner-modal .controls {
+            margin-top: 1rem;
+        }
+
+        .qr-section {
+            text-align: center;
+        }
+
+        #guest-scanner-modal {
+            display: none;
+            position: fixed;
+            z-index: 10000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(8px);
+            animation: fadeIn 0.3s ease;
+        }
+
+        #guest-scanner-modal .modal-content {
+            background-color: #FFFFFF;
+            margin: clamp(5%, 10vh, 15%) auto;
+            padding: clamp(1rem, 2vw, 1.5rem);
+            border-radius: 20px;
+            width: 90%;
+            max-width: clamp(600px, 80vw, 900px);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
+            animation: modalSlideIn 0.4s ease;
+            position: relative;
+        }
+
+        #guest-scanner-container {
+            position: relative;
+            width: 100%;
+            max-width: 100%;
+            margin: 0 auto;
+            background: #1A202C;
+            border-radius: 12px;
+            overflow: hidden;
+            aspect-ratio: 4 / 3;
+            border: 3px solid #3182CE;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        #guest-interactive {
+            width: 100%;
+            height: 100%;
+            display: block;
+            object-fit: cover;
+        }
+
+        #guest-scan-line {
+            position: absolute;
+            top: 10%;
+            left: 5%;
+            right: 5%;
+            height: 4px;
+            background: #63B3ED;
+            animation: scanning 1.5s linear infinite;
+            z-index: 1000;
+            box-shadow: 0 0 10px rgba(99, 179, 237, 0.7);
+        }
+
+        #guest-scanner-modal .controls {
+            display: flex;
+            gap: 1.2rem;
+            justify-content: center;
+            margin-top: 1.5rem;
+            flex-wrap: wrap;
+        }
+
+        #guest-scanner-modal .btn {
+            background: linear-gradient(45deg, #3182CE, #2B6CB0);
+            color: white;
+            border: none;
+            padding: 0.9rem 1.8rem;
+            border-radius: 30px;
+            cursor: pointer;
+            font-size: clamp(0.95rem, 1.6vw, 1.1rem);
+            font-weight: 600;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        #guest-scanner-modal .btn:hover {
+            transform: translateY(-3px);
+            background: linear-gradient(45deg, #4299E1, #3182CE);
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.15);
+        }
+
+        #guest-scanner-modal .btn.stop {
+            background: linear-gradient(45deg, #F56565, #E53E3E);
+        }
+
+        #guest-scanner-modal .btn.stop:hover {
+            background: linear-gradient(45deg, #E53E3E, #C53030);
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes modalSlideIn {
+            from { opacity: 0; transform: translateY(-50px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes scanning {
+            0% { top: 10%; }
+            50% { top: 90%; }
+            100% { top: 10%; }
+        }
+
+        @media (max-width: 768px) {
+            #guest-scanner-modal .modal-content {
+                width: 95%;
+                padding: 1rem;
+            }
+
+            #guest-scanner-container {
+                max-width: 100%;
+                height: 400px;
+            }
+
+            #guest-interactive {
+                height: 400px;
+            }
+
+            #guest-scanner-modal .controls {
+                flex-direction: column;
+                gap: 1rem;
+            }
+
+            #guest-scanner-modal .btn {
+                width: 100%;
+                padding: 0.8rem;
+            }
+        }
+
+        @media (min-width: 1024px) {
+            #guest-scanner-modal .modal-content {
+                max-width: 800px;
+            }
+
+            #guest-scanner-container {
+                max-width: 700px;
+            }
+        }
+
+        .guest-info {
+            background: linear-gradient(45deg, #48BB78, #38A169);
+            color: white;
+            padding: 1rem;
+            border-radius: 12px;
+            margin-bottom: 1rem;
+            font-weight: 600;
+        }
+
+        @media (min-width: 1024px) {
+            .container {
+                width: 90%;
+            }
+
+            .scanner-section, .table-section, .settings-section, .history-section, .qr-section {
+                padding: 2.5rem;
+            }
+
+            .input-group {
+                grid-template-columns: 3fr 2fr 1fr auto;
+            }
+
+            .controls {
+                gap: 1.5rem;
+            }
+
+            .btn {
+                padding: 1rem 2rem;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .content {
+                padding: 1.2rem;
+            }
+
+            .controls {
+                flex-direction: column;
+            }
+
+            .btn {
+                width: 100%;
+                padding: 0.8rem;
+            }
+
+            .input-group {
+                grid-template-columns: 1fr;
+            }
+
+            .modal-content {
+                margin: 15% auto;
+                width: 95%;
+            }
+
+            #scanner-container {
+                max-width: 100%;
+                height: 400px;
+            }
+
+            #interactive {
+                height: 400px;
+            }
+
+            .table-header {
+                flex-direction: column;
+            }
+
+            .search-box {
+                max-width: 100%;
+            }
+
+            table {
+                font-size: 0.85rem;
+            }
+
+            th:nth-child(6), td:nth-child(6),
+            th:nth-child(7), td:nth-child(7),
+            th:nth-child(8), td:nth-child(8),
+            th:nth-child(9), td:nth-child(9) {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📱 Scanner Barcode & QR Code & Inventory Pro</h1>
+            <p>Manajemen stok cerdas dengan pemindaian barcode dan QR code - Versi Premium</p>
+        </div>
+
+        <div class="content">
+            <div class="status" id="login-status" style="display: none;"></div>
+
+            <div class="qr-section" id="qr-section" style="display: none;">
+                <h2 style="margin-bottom: 1.8rem; color: #2D3748; font-weight: 700;">🔗 QR Code Akses Tamu</h2>
+                <button onclick="showQRModal()" class="btn">🔍 Tampilkan QR Code</button>
+            </div>
+
+            <div class="settings-section">
+                <h2 style="margin-bottom: 1.8rem; color: #2D3748; font-weight: 700;">⚙️ Pengaturan</h2>
+                <div class="setting-item">
+                    <div>
+                        <strong>Auto Quantity Popup</strong>
+                        <br><small>Tampilkan popup input jumlah setelah scan</small>
+                    </div>
+                    <div class="toggle active" id="auto-popup-toggle" onclick="toggleSetting('autoPopup')"></div>
+                </div>
+                <div class="setting-item">
+                    <div>
+                        <strong>Sound Notification</strong>
+                        <br><small>Suara notifikasi saat berhasil scan</small>
+                    </div>
+                    <div class="toggle active" id="sound-toggle" onclick="toggleSetting('sound')"></div>
+                </div>
+                <div class="setting-item">
+                    <div>
+                        <strong>Vibration</strong>
+                        <br><small>Getar saat berhasil scan (mobile)</small>
+                    </div>
+                    <div class="toggle active" id="vibration-toggle" onclick="toggleSetting('vibration')"></div>
+                </div>
+            </div>
+
+            <div class="scanner-section">
+                <h2 style="text-align: center; margin-bottom: 1.8rem; color: #2D3748; font-weight: 700;">🔍 Scanner Barcode & QR Code</h2>
+                <div class="controls">
+                    <button id="start-btn" class="btn">📷 Mulai Scan</button>
+                </div>
+                <div class="loading" id="loading">
+                    <div class="spinner"></div>
+                    <p>Memuat kamera...</p>
+                </div>
+                <div class="manual-input">
+                    <h3 style="margin-bottom: 1.2rem; color: #2D3748; font-weight: 600;">⌨️ Input Manual</h3>
+                    <div class="input-group">
+                        <input type="text" id="manual-barcode" placeholder="Masukkan kode barcode" required>
+                        <input type="text" id="manual-name" placeholder="Nama produk (opsional)">
+                        <input type="number" id="manual-qty" placeholder="Qty" value="1" min="1">
+                        <button onclick="addManualItem()" class="btn">➕ Tambah</button>
+                    </div>
+                </div>
+                <div id="status" class="status" style="display: none;"></div>
+            </div>
+
+            <div class="table-section">
+                <div class="table-header">
+                    <h2 style="font-weight: 700;">📊 Data Inventory</h2>
+                    <input type="text" id="search-box" class="search-box" placeholder="🔍 Cari barcode, PLU, atau nama...">
+                    <div class="controls">
+                        <button onclick="exportToExcel()" class="btn export">📥 Export Excel</button>
+                        <button onclick="document.getElementById('import-file').click()" class="btn import">📤 Import</button>
+                        <button onclick="clearAllData()" class="btn clear">🗑️ Clear All</button>
+                        <button onclick="showSaveTableModal()" class="btn save">💾 Simpan Tabel</button>
+                    </div>
+                </div>
+                <input type="file" id="import-file" class="file-input" accept=".xlsx,.xls" onchange="importFromExcel(this)">
+                <input type="file" id="restore-file" class="file-input" accept=".json" onchange="restoreData(this)">
+                <div class="stats">
+                    <div class="stat-card">
+                        <h3 id="total-items">0</h3>
+                        <p>Total Item</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3 id="total-qty">0</h3>
+                        <p>Total Quantity</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3 id="last-scan">-</h3>
+                        <p>Scan Terakhir</p>
+                    </div>
+                </div>
+                <div class="backup-section">
+                    <h4 style="margin-bottom: 1rem; font-weight: 600;">💾 Backup & Restore</h4>
+                    <div style="display: flex; gap: 1.2rem; flex-wrap: wrap;">
+                        <button onclick="backupData()" class="btn">💾 Backup Data</button>
+                        <button onclick="document.getElementById('restore-file').click()" class="btn">📂 Restore Data</button>
+                    </div>
+                </div>
+                <div class="table-container">
+                    <table id="inventory-table">
+                        <thead>
+                            <tr>
+                                <th>No</th>
+                                <th>Barcode</th>
+                                <th>PLU</th>
+                                <th>Nama Produk</th>
+                                <th>Quantity</th>
+                                <th>Waktu Pertama</th>
+                                <th>Waktu Terakhir</th>
+                                <th>Total Scan</th>
+                                <th>Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody id="inventory-body">
+                            <tr>
+                                <td colspan="9" class="no-data">Belum ada data. Mulai scan barcode untuk menambah data.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="history-section">
+                    <h4 style="margin-bottom: 1rem; font-weight: 600;">📜 Riwayat Tabel</h4>
+                    <div class="table-header">
+                        <input type="text" id="history-search" class="search-box" placeholder="🔍 Cari nama tabel atau pembuat...">
+                        <button onclick="exportAllTables()" class="btn export">📥 Export Semua Tabel</button>
+                        <button onclick="clearTableHistory()" class="btn clear">🗑️ Clear Riwayat</button>
+                    </div>
+                    <div class="table-container">
+                        <table id="history-table">
+                            <thead>
+                                <tr>
+                                    <th>No</th>
+                                    <th>Nama Tabel</th>
+                                    <th>Pembuat</th>
+                                    <th>Waktu Disimpan</th>
+                                    <th>Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody id="history-body">
+                                <tr>
+                                    <td colspan="5" class="no-data">Belum ada riwayat tabel.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="quantity-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>🎯 Input Jumlah</h2>
+                <p>Barcode atau QR code berhasil dipindai!</p>
+            </div>
+            <div class="barcode-display" id="modal-barcode"></div>
+            <div class="quantity-input-group">
+                <button class="qty-btn minus" onclick="changeQuantity(-1)">−</button>
+                <input type="number" id="modal-quantity" class="qty-input" value="1" min="1" max="9999">
+                <button class="qty-btn plus" onclick="changeQuantity(1)">+</button>
+            </div>
+            <div class="modal-buttons">
+                <button class="modal-btn confirm" onclick="confirmQuantity()">✅ Tambah</button>
+                <button class="modal-btn cancel" onclick="cancelQuantity()">❌ Batal</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="edit-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>✏️ Edit Item</h2>
+                <p>Masukkan detail baru untuk item</p>
+            </div>
+            <div class="barcode-display" id="edit-barcode"></div>
+            <div class="input-group" style="display: grid; gap: 1rem;">
+                <input type="text" id="edit-name" placeholder="Nama Produk">
+            </div>
+            <div class="modal-buttons">
+                <button class="modal-btn confirm" onclick="saveEdit()">✅ Simpan</button>
+                <button class="modal-btn cancel" onclick="cancelEdit()">❌ Batal</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="save-table-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>💾 Simpan Tabel</h2>
+                <p>Masukkan nama tabel untuk menyimpan data</p>
+            </div>
+            <div class="input-group">
+                <input type="text" id="table-name" placeholder="Nama Tabel" required>
+            </div>
+            <div class="modal-buttons">
+                <button class="modal-btn confirm" onclick="saveTable()">✅ Simpan</button>
+                <button class="modal-btn cancel" onclick="cancelSaveTable()">❌ Batal</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="view-table-modal" class="modal">
+        <div class="modal-content wide">
+            <div class="modal-header">
+                <h2 id="view-table-title">📊 Detail Tabel</h2>
+                <p>Data inventory dari tabel yang dipilih</p>
+            </div>
+            <div class="table-container">
+                <table id="view-table">
+                    <thead>
+                        <tr>
+                            <th>No</th>
+                            <th>Barcode</th>
+                            <th>PLU</th>
+                            <th>Quantity</th>
+                            <th>Waktu Terakhir</th>
+                        </tr>
+                    </thead>
+                    <tbody id="view-table-body">
+                        <tr>
+                            <td colspan="5" class="no-data">Tidak ada data untuk ditampilkan.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="modal-buttons">
+                <button class="modal-btn confirm" onclick="confirmRestoreTable()">✅ Restore</button>
+                <button class="modal-btn cancel" onclick="cancelViewTable()">❌ Tutup</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="scanner-modal" class="modal">
+        <div class="modal-content wide">
+            <div class="modal-header">
+                <h2>🔍 Scanner</h2>
+                <p>Arahkan kamera ke barcode atau QR code</p>
+            </div>
+            <div id="scanner-container">
+                <video id="interactive" muted playsinline></video>
+                <div class="scan-line" id="scan-line"></div>
+            </div>
+            <div class="controls">
+                <button id="stop-btn" class="btn stop">⏹️ Stop Scan</button>
+                <button onclick="toggleFlashlight()" class="btn">🔦 Flash</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="guest-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>🔐 Belum Login</h2>
+                <p>Anda belum login. Pilih opsi berikut:</p>
+            </div>
+            <div class="modal-buttons">
+                <button class="modal-btn confirm" onclick="startGuestScanner()">👤 Masuk sebagai Tamu</button>
+                <button class="modal-btn cancel" onclick="window.location.href='login.html'">🔑 Login</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="guest-scanner-modal" class="modal">
+        <div class="modal-content wide">
+            <div class="modal-header">
+                <h2>🔍 Scan QR Code untuk Mode Tamu</h2>
+                <p>Arahkan kamera ke QR code akses</p>
+            </div>
+            <div id="guest-scanner-container">
+                <video id="guest-interactive" muted playsinline></video>
+                <div class="scan-line" id="guest-scan-line"></div>
+            </div>
+            <div class="controls">
+                <button id="guest-stop-btn" class="btn stop">⏹️ Stop Scan</button>
+                <button onclick="toggleGuestFlashlight()" class="btn">🔦 Flash</button>
+            </div>
+        </div>
+    </div>
+
+<div id="qr-modal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>🔗 QR Code Akses Tamu</h2>
+            <p>Gunakan QR code ini untuk login sebagai tamu di perangkat lain</p>
+        </div>
+        <div id="qr-code" style="text-align: center;"></div>
+        <p style="text-align: center; font-weight: 600;">PIN: <span id="access-pin"></span></p>
+        <div class="modal-buttons">
+            <button class="modal-btn confirm" onclick="generateQRCode()">🔄 Buat Ulang QR Code</button>
+            <button class="modal-btn cancel" onclick="closeQRModal()">❌ Tutup</button>
+        </div>
+    </div>
+</div>
+
+<div id="guest-scanner-modal" class="modal">
+    <div class="modal-content wide">
+        <div class="modal-header">
+            <h2>🔍 Scan QR Code Tamu</h2>
+            <p>Arahkan kamera ke QR code untuk masuk sebagai tamu</p>
+        </div>
+        <div id="guest-scanner-container">
+            <video id="guest-interactive" muted playsinline></video>
+            <div class="scan-line" id="guest-scan-line"></div>
+        </div>
+        <div class="controls">
+            <button id="guest-stop-btn" class="btn stop">⏹️ Stop Scan</button>
+            <button onclick="toggleGuestFlashlight()" class="btn">🔦 Flash</button>
+        </div>
+    </div>
+</div>
+
+    <script>
+const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+let inventoryData = new Map();
+let scanHistory = [];
+let tableHistory = [];
+let isScanning = false;
+let currentScannedBarcode = '';
+let flashlightOn = false;
+let editingBarcode = '';
+let codeReader = null;
+let guestCodeReader = null;
+let videoTrack = null;
+let guestVideoTrack = null;
+let mediaStream = null;
+let guestMediaStream = null;
+let currentTableIndex = null;
+let guestStorageKey = null; // Kunci penyimpanan untuk tamu, berdasarkan username pembuat QR
+
+let settings = {
+    autoPopup: true,
+    sound: true,
+    vibration: true
+};
+
+const STORAGE_KEYS = {
+    INVENTORY: 'inventoryData',
+    SETTINGS: 'scannerSettings',
+    TABLE_HISTORY: 'tableHistory',
+    PIN_DATA: 'pinData'
+};
+
+function cekLogin() {
+    const username = localStorage.getItem('username');
+    const isGuest = localStorage.getItem('isGuest') === 'true';
+    const loginTime = localStorage.getItem('guestLoginTime');
+    const currentDate = new Date().toISOString().slice(0, 10);
+
+    if (isGuest && loginTime) {
+        const loginDate = new Date(loginTime).toISOString().slice(0, 10);
+        if (loginDate !== currentDate) {
+            localStorage.removeItem('username');
+            localStorage.removeItem('isGuest');
+            localStorage.removeItem('guestLoginTime');
+            localStorage.removeItem('guestProvider');
+            showGuestModal();
+            return false;
+        }
+        guestStorageKey = 'guestInventory_' + username;
+        const statusElement = document.getElementById('login-status');
+        const provider = localStorage.getItem('guestProvider');
+        statusElement.textContent = `Anda masuk sebagai tamu melalui ${provider}`;
+        statusElement.className = 'status success';
+        statusElement.style.display = 'block';
+        return true;
+    } else if (username) {
+        guestStorageKey = null;
+        const statusElement = document.getElementById('login-status');
+        statusElement.textContent = `Anda sudah login sebagai ${username}`;
+        statusElement.className = 'status success';
+        statusElement.style.display = 'block';
+        document.getElementById('qr-section').style.display = 'block';
+        return true;
+    } else {
+        showGuestModal();
+        return false;
+    }
+}
+
+function showGuestModal() {
+    document.getElementById('guest-modal').style.display = 'block';
+}
+
+function showQRModal() {
+    if (!cekLogin() || localStorage.getItem('isGuest') === 'true') {
+        showNotification('❌ Hanya pengguna terdaftar yang dapat melihat QR code!', 'error');
+        return;
+    }
+    generateQRCode();
+    document.getElementById('qr-modal').style.display = 'block';
+}
+
+function closeQRModal() {
+    document.getElementById('qr-modal').style.display = 'none';
+}
+
+function generateQRCode() {
+    const username = localStorage.getItem('username');
+    if (!username || localStorage.getItem('isGuest') === 'true') {
+        showNotification('❌ Anda harus login sebagai pengguna terdaftar untuk membuat QR code!', 'error');
+        return;
+    }
+
+    const currentDate = new Date().toISOString().slice(0, 10); // Tanggal saat ini (YYYY-MM-DD)
+    const pin = '451661750'; // PIN mutlak untuk mode tamu
+    const qrData = JSON.stringify({
+        username,
+        pin,
+        date: currentDate, // Sertakan tanggal pembuatan di QR code
+        mode: 'guest'
+    });
+
+    // Simpan data PIN ke localStorage untuk validasi
+    const pinData = JSON.parse(localStorage.getItem(STORAGE_KEYS.PIN_DATA) || '{}');
+    const pinKey = `${username}-${currentDate}`;
+    pinData[pinKey] = { pin, date: currentDate };
+    localStorage.setItem(STORAGE_KEYS.PIN_DATA, JSON.stringify(pinData));
+
+    const qrCodeElement = document.getElementById('qr-code');
+    qrCodeElement.innerHTML = '';
+    QRCode.toCanvas(qrData, { width: 200, margin: 2 }, function (err, canvas) {
+        if (err) {
+            showNotification('❌ Gagal membuat QR code!', 'error');
+            return;
+        }
+        qrCodeElement.appendChild(canvas);
+    });
+
+    document.getElementById('access-pin').textContent = pin;
+}
+
+function startGuestScanner() {
+    document.getElementById('guest-modal').style.display = 'none';
+    document.getElementById('guest-scanner-modal').style.display = 'block';
+
+    const videoElement = document.getElementById('guest-interactive');
+    navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } }
+    })
+        .then(stream => {
+            guestMediaStream = stream;
+            guestVideoTrack = stream.getVideoTracks()[0];
+            videoElement.srcObject = guestMediaStream;
+            initializeGuestScanner(videoElement);
+        })
+        .catch(err => {
+            showNotification('❌ Gagal mengakses kamera: ' + err.message, 'error');
+            document.getElementById('guest-scanner-modal').style.display = 'none';
+        });
+}
+
+function initializeGuestScanner(videoElement) {
+    guestCodeReader = new ZXing.BrowserMultiFormatReader();
+    guestCodeReader.decodeFromStream(guestMediaStream, 'guest-interactive', (result, err) => {
+        if (result) {
+            try {
+                const qrData = JSON.parse(result.text);
+                if (qrData.mode === 'guest') {
+                    validateGuestAccess(qrData);
+                } else {
+                    showNotification('❌ QR code tidak valid untuk mode tamu!', 'error');
+                }
+            } catch (e) {
+                showNotification('❌ QR code tidak valid!', 'error');
+            }
+        }
+        if (err && !(err instanceof ZXing.NotFoundException)) {
+            console.error('Decode error:', err);
+        }
+    }).catch(err => {
+        showNotification('❌ Gagal memulai scanner: ' + err.message, 'error');
+        document.getElementById('guest-scanner-modal').style.display = 'none';
+    });
+}
+
+function validateGuestAccess(qrData) {
+    const currentDate = new Date().toISOString().slice(0, 10);
+    const pinData = JSON.parse(localStorage.getItem(STORAGE_KEYS.PIN_DATA) || '{}');
+    const pinKey = `${qrData.username}-${qrData.date}`;
+
+    // Validasi PIN, pemberi PIN, dan tanggal
+    if (
+        qrData.pin === '451661750' &&
+        qrData.date === currentDate &&
+        pinData[pinKey] &&
+        pinData[pinKey].pin === qrData.pin &&
+        pinData[pinKey].date === qrData.date
+    ) {
+        localStorage.setItem('username', qrData.username);
+        localStorage.setItem('isGuest', 'true');
+        localStorage.setItem('guestLoginTime', new Date().toISOString());
+        localStorage.setItem('guestProvider', qrData.username);
+        guestStorageKey = 'guestInventory_' + qrData.username;
+        stopGuestScanner();
+        loadFromLocalStorage();
+        showNotification(`✅ Berhasil masuk sebagai tamu untuk ${qrData.username}!`, 'success');
+        window.location.reload();
+    } else {
+        showNotification('❌ QR code tidak valid, PIN salah, atau tanggal kadaluarsa!', 'error');
+    }
+}
+
+function stopGuestScanner() {
+    if (guestCodeReader) {
+        guestCodeReader.reset();
+        guestCodeReader = null;
+    }
+    if (guestMediaStream) {
+        guestMediaStream.getTracks().forEach(track => track.stop());
+        guestMediaStream = null;
+        guestVideoTrack = null;
+    }
+    document.getElementById('guest-scanner-modal').style.display = 'none';
+}
+
+function toggleGuestFlashlight() {
+    if (!guestVideoTrack) return;
+    if (guestVideoTrack.getCapabilities && guestVideoTrack.getCapabilities().torch) {
+        flashlightOn = !flashlightOn;
+        guestVideoTrack.applyConstraints({ advanced: [{ torch: flashlightOn }] })
+            .then(() => showNotification(flashlightOn ? '🔦 Flash dihidupkan' : '🔦 Flash dimatikan', 'success'))
+            .catch(err => showNotification('❌ Flash tidak didukung', 'error'));
+    } else {
+        showNotification('❌ Flash tidak didukung', 'error');
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+    cekLogin();
+    loadFromLocalStorage();
+    loadTableHistoryFromLocalStorage();
+    updateDisplay();
+    setupEventListeners();
+    loadSettings();
+    updateHistoryTable();
+
+    document.getElementById('search-box').addEventListener('input', function (e) {
+        searchInventory(e.target.value);
+    });
+
+    document.getElementById('history-search').addEventListener('input', function (e) {
+        searchHistory(e.target.value);
+    });
+});
+
+function setupEventListeners() {
+    document.getElementById('start-btn').addEventListener('click', startScanner);
+    document.getElementById('stop-btn').addEventListener('click', stopScanner);
+    document.getElementById('guest-stop-btn').addEventListener('click', stopGuestScanner);
+
+    document.getElementById('manual-barcode').addEventListener('keypress', function (e) {
+        if (e.key === 'Enter') {
+            document.getElementById('manual-name').focus();
+        }
+    });
+
+    document.getElementById('manual-name').addEventListener('keypress', function (e) {
+        if (e.key === 'Enter') {
+            document.getElementById('manual-qty').focus();
+        }
+    });
+
+    document.getElementById('manual-qty').addEventListener('keypress', function (e) {
+        if (e.key === 'Enter') {
+            addManualItem();
+        }
+    });
+
+    document.getElementById('modal-quantity').addEventListener('keypress', function (e) {
+        if (e.key === 'Enter') {
+            confirmQuantity();
+        }
+    });
+
+    document.getElementById('table-name').addEventListener('keypress', function (e) {
+        if (e.key === 'Enter') {
+            saveTable();
+        }
+    });
+
+    window.addEventListener('click', function (event) {
+        if (event.target.classList.contains('modal')) {
+            if (event.target.id === 'scanner-modal') {
+                stopScanner();
+            } else if (event.target.id === 'guest-scanner-modal') {
+                stopGuestScanner();
+            } else if (event.target.id === 'qr-modal') {
+                closeQRModal();
+            } else {
+                cancelQuantity();
+                cancelEdit();
+                cancelSaveTable();
+                cancelViewTable();
+                document.getElementById('guest-modal').style.display = 'none';
+            }
+        }
+    });
+
+    document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape') {
+            stopScanner();
+            stopGuestScanner();
+            cancelQuantity();
+            cancelEdit();
+            cancelSaveTable();
+            cancelViewTable();
+            document.getElementById('guest-modal').style.display = 'none';
+            closeQRModal();
+        }
+    });
+
+    window.addEventListener('beforeunload', function () {
+        cleanupScanner();
+        saveToLocalStorage();
+        saveSettings();
+        saveTableHistoryToLocalStorage();
+    });
+}
+
+function cleanupScanner() {
+    if (codeReader) {
+        codeReader.reset();
+        codeReader = null;
+    }
+    if (mediaStream) {
+        mediaStream.getTracks().forEach(track => track.stop());
+        mediaStream = null;
+        videoTrack = null;
+    }
+    isScanning = false;
+    document.getElementById('scanner-modal').style.display = 'none';
+    document.getElementById('start-btn').disabled = false;
+}
+
+function isStreamActive(stream) {
+    if (!stream) return false;
+    return stream.getVideoTracks().some(track => track.enabled && track.readyState === 'live');
+}
+
+function startScanner() {
+    if (!cekLogin()) return;
+    if (isScanning) {
+        console.log('Scanner already running');
+        return;
+    }
+
+    showLoading(true);
+    showStatus('Memulai kamera...', 'info');
+
+    const videoElement = document.getElementById('interactive');
+
+    if (mediaStream && isStreamActive(mediaStream)) {
+        console.log('Reusing existing media stream');
+        videoElement.srcObject = mediaStream;
+        videoTrack = mediaStream.getVideoTracks()[0];
+        initializeScanner(videoElement);
+    } else {
+        console.log('Requesting new media stream');
+        if (mediaStream) {
+            mediaStream.getTracks().forEach(track => track.stop());
+            mediaStream = null;
+        }
+        navigator.mediaDevices.getUserMedia({ 
+            video: { 
+                facingMode: "environment",
+                width: { ideal: 1280 },
+                height: { ideal: 720 }
+            }
+        })
+            .then(stream => {
+                console.log('New stream acquired');
+                mediaStream = stream;
+                videoTrack = stream.getVideoTracks()[0];
+                videoElement.srcObject = mediaStream;
+                initializeScanner(videoElement);
+            })
+            .catch(err => {
+                showLoading(false);
+                console.error('Camera access error:', err);
+                if (err.name === 'NotAllowedError') {
+                    showStatus('❌ Izin kamera ditolak. Silakan izinkan akses kamera.', 'error');
+                } else if (err.name === 'NotFoundError') {
+                    showStatus('❌ Tidak ada kamera yang ditemukan di perangkat ini.', 'error');
+                } else {
+                    showStatus('❌ Gagal mengakses kamera: ' + err.message, 'error');
+                }
+            });
+    }
+}
+
+function initializeScanner(videoElement) {
+    if (!cekLogin()) {
+        showNotification('❌ Anda harus login untuk menggunakan scanner!', 'error');
+        return;
+    }
+
+    if (codeReader) {
+        try {
+            codeReader.reset();
+            console.log('Existing codeReader reset');
+        } catch (error) {
+            console.error('Error resetting codeReader:', error);
+        }
+        codeReader = null;
+    }
+
+    codeReader = new ZXing.BrowserMultiFormatReader();
+    console.log('Initializing ZXing code reader');
+
+    if (!videoElement) {
+        showStatus('❌ Elemen video tidak ditemukan!', 'error');
+        console.error('Video element not found');
+        showLoading(false);
+        return;
+    }
+
+    if (!mediaStream || !isStreamActive(mediaStream)) {
+        showStatus('❌ Kamera tidak aktif! Silakan mulai ulang scanner.', 'error');
+        console.error('Media stream not active');
+        showLoading(false);
+        return;
+    }
+
+    const hints = new Map([
+        [ZXing.DecodeHintType.TRY_HARDER, true],
+        [ZXing.DecodeHintType.POSSIBLE_FORMATS, [
+            ZXing.BarcodeFormat.QR_CODE,
+            ZXing.BarcodeFormat.CODE_128,
+            ZXing.BarcodeFormat.EAN_13,
+            ZXing.BarcodeFormat.UPC_A,
+            ZXing.BarcodeFormat.CODE_39
+        ]]
+    ]);
+
+    codeReader.decodeFromStream(mediaStream, 'interactive', (result, err) => {
+        if (result) {
+            const code = result.text.trim();
+            if (code && code.length > 3) {
+                console.log('Barcode detected:', code);
+                handleBarcodeDetected(code);
+            } else {
+                console.warn('Barcode too short or empty:', code);
+                showNotification('⚠️ Kode barcode terlalu pendek!', 'info');
+            }
+        }
+        if (err && !(err instanceof ZXing.NotFoundException)) {
+            console.error('Decode error:', err);
+            showNotification('❌ Gagal mendecode barcode: ' + err.message, 'error');
+        }
+    }, { hints }).then(() => {
+        showLoading(false);
+        isScanning = true;
+        document.getElementById('scanner-modal').style.display = 'block';
+        document.getElementById('start-btn').disabled = true;
+        showStatus('✅ Kamera aktif! Arahkan ke barcode atau QR code', 'success');
+        console.log('Scanner initialized successfully');
+    }).catch(err => {
+        showLoading(false);
+        console.error('Scanner initialization error:', err);
+        showStatus('❌ Gagal memulai scanner: ' + err.message, 'error');
+        cleanupScanner();
+    });
+}
+
+function stopScanner() {
+    if (!isScanning) {
+        console.log('Scanner not running');
+        return;
+    }
+
+    cleanupScanner();
+    showStatus('⏹️ Scanner dihentikan', 'info');
+    console.log('Scanner stopped');
+}
+
+function toggleFlashlight() {
+    if (!isScanning || !videoTrack) {
+        showNotification('❌ Scanner belum aktif!', 'error');
+        console.log('Cannot toggle flashlight: scanner not active');
+        return;
+    }
+
+    if (videoTrack.getCapabilities && videoTrack.getCapabilities().torch) {
+        flashlightOn = !flashlightOn;
+        videoTrack.applyConstraints({
+            advanced: [{ torch: flashlightOn }]
+        }).then(() => {
+            showNotification(flashlightOn ? '🔦 Flash dihidupkan' : '🔦 Flash dimatikan', 'success');
+            console.log('Flashlight toggled:', flashlightOn);
+        }).catch(err => {
+            console.error('Flashlight error:', err);
+            showNotification('❌ Flash tidak didukung pada perangkat ini', 'error');
+        });
+    } else {
+        showNotification('❌ Flash tidak didukung pada perangkat ini', 'error');
+        console.log('Flashlight not supported');
+    }
+}
+
+function handleBarcodeDetected(barcode) {
+    currentScannedBarcode = barcode;
+
+    if (settings.sound) {
+        playBeepSound();
+    }
+
+    if (settings.vibration && navigator.vibrate) {
+        navigator.vibrate(200);
+    }
+
+    stopScanner();
+
+    if (settings.autoPopup) {
+        showQuantityModal(barcode);
+    } else {
+        addScannedItem(barcode, 1);
+        const continueScanning = confirm('✅ Item berhasil dipindai! Lanjutkan scan?');
+        if (continueScanning) {
+            startScanner();
+        }
+    }
+}
+
+function showQuantityModal(barcode) {
+    document.getElementById('modal-barcode').textContent = barcode;
+    document.getElementById('modal-quantity').value = 1;
+    document.getElementById('quantity-modal').style.display = 'block';
+    document.getElementById('modal-quantity').focus();
+}
+
+function changeQuantity(delta) {
+    const input = document.getElementById('modal-quantity');
+    const currentValue = parseInt(input.value) || 1;
+    const newValue = Math.max(1, Math.min(9999, currentValue + delta));
+    input.value = newValue;
+}
+
+function confirmQuantity() {
+    const quantity = parseInt(document.getElementById('modal-quantity').value) || 1;
+    if (quantity < 1) {
+        showNotification('❌ Jumlah harus lebih dari 0!', 'error');
+        return;
+    }
+    addScannedItem(currentScannedBarcode, quantity);
+    document.getElementById('quantity-modal').style.display = 'none';
+
+    const continueScanning = confirm('✅ Item berhasil disimpan! Lanjutkan scan?');
+    if (continueScanning) {
+        startScanner();
+    }
+}
+
+function cancelQuantity() {
+    document.getElementById('quantity-modal').style.display = 'none';
+    currentScannedBarcode = '';
+
+    const continueScanning = confirm('❌ Input dibatalkan. Lanjutkan scan?');
+    if (continueScanning) {
+        startScanner();
+    }
+}
+
+function addScannedItem(barcode, quantity = 1) {
+    if (!barcode || barcode.trim() === '') return;
+
+    const timestamp = new Date();
+    const existingItem = inventoryData.get(barcode);
+
+    if (existingItem) {
+        existingItem.quantity += quantity;
+        existingItem.lastScanTime = timestamp;
+        existingItem.totalScans += 1;
+        showNotification(`✅ Item updated: ${barcode} (Total: ${existingItem.quantity})`, 'success');
+    } else {
+        const newItem = {
+            barcode: barcode,
+            name: '',
+            quantity: quantity,
+            firstScanTime: timestamp,
+            lastScanTime: timestamp,
+            totalScans: 1
+        };
+        inventoryData.set(barcode, newItem);
+        showNotification(`✅ Item baru ditambahkan: ${barcode}`, 'success');
+    }
+
+    scanHistory.push({
+        barcode: barcode,
+        quantity: quantity,
+        timestamp: timestamp
+    });
+
+    updateDisplay();
+    saveToLocalStorage();
+}
+
+function addManualItem() {
+    if (!cekLogin()) return;
+
+    const barcode = document.getElementById('manual-barcode').value.trim();
+    const name = document.getElementById('manual-name').value.trim();
+    const quantity = parseInt(document.getElementById('manual-qty').value) || 1;
+
+    if (!barcode) {
+        showNotification('❌ Barcode tidak boleh kosong!', 'error');
+        return;
+    }
+
+    if (quantity < 1) {
+        showNotification('❌ Jumlah harus lebih dari 0!', 'error');
+        return;
+    }
+
+    const timestamp = new Date();
+    const existingItem = inventoryData.get(barcode);
+
+    if (existingItem) {
+        existingItem.quantity += quantity;
+        existingItem.lastScanTime = timestamp;
+        existingItem.totalScans += 1;
+        if (name) existingItem.name = name;
+        showNotification(`✅ Item updated: ${barcode}`, 'success');
+    } else {
+        const newItem = {
+            barcode: barcode,
+            name: name,
+            quantity: quantity,
+            firstScanTime: timestamp,
+            lastScanTime: timestamp,
+            totalScans: 1
+        };
+        inventoryData.set(barcode, newItem);
+        showNotification(`✅ Item baru ditambahkan: ${barcode}`, 'success');
+    }
+
+    document.getElementById('manual-barcode').value = '';
+    document.getElementById('manual-name').value = '';
+    document.getElementById('manual-qty').value = '1';
+
+    updateDisplay();
+    saveToLocalStorage();
+}
+
+function updateDisplay() {
+    updateTable();
+    updateStats();
+}
+
+function updateTable() {
+    const tbody = document.getElementById('inventory-body');
+
+    if (inventoryData.size === 0) {
+        tbody.innerHTML = '<tr><td colspan="9" class="no-data">Belum ada data. Mulai scan barcode untuk menambah data.</td></tr>';
+        return;
+    }
+
+    const fragment = document.createDocumentFragment();
+    let index = 1;
+
+    const sortedItems = Array.from(inventoryData.entries()).sort((a, b) =>
+        new Date(b[1].lastScanTime) - new Date(a[1].lastScanTime)
+    );
+
+    for (const [barcode, item] of sortedItems) {
+        const plu = barcode.slice(-4);
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>${index}</td>
+            <td>${item.barcode}</td>
+            <td>${plu}</td>
+            <td>${item.name || '-'}</td>
+            <td>${item.quantity}</td>
+            <td>${formatDateTime(item.firstScanTime)}</td>
+            <td>${formatDateTime(item.lastScanTime)}</td>
+            <td>${item.totalScans}x</td>
+            <td>
+                <button class="edit-btn" onclick="editItem('${barcode}')">✏️</button>
+                <button class="delete-btn" onclick="deleteItem('${barcode}')">🗑️</button>
+            </td>
+        `;
+        fragment.appendChild(row);
+        index++;
+    }
+
+    tbody.innerHTML = '';
+    tbody.appendChild(fragment);
+}
+
+function updateStats() {
+    const totalItems = inventoryData.size;
+    let totalQty = 0;
+    let lastScan = null;
+
+    for (const item of inventoryData.values()) {
+        totalQty += item.quantity;
+        if (!lastScan || new Date(item.lastScanTime) > new Date(lastScan)) {
+            lastScan = item.lastScanTime;
+        }
+    }
+
+    document.getElementById('total-items').textContent = totalItems;
+    document.getElementById('total-qty').textContent = totalQty;
+    document.getElementById('last-scan').textContent = lastScan ? formatDateTime(lastScan) : '-';
+}
+
+function searchInventory(searchTerm) {
+    const tbody = document.getElementById('inventory-body');
+
+    if (!searchTerm.trim()) {
+        updateTable();
+        return;
+    }
+
+    const filteredItems = Array.from(inventoryData.entries()).filter(([barcode, item]) => {
+        const searchLower = searchTerm.toLowerCase();
+        const plu = barcode.slice(-4);
+        return (
+            barcode.toLowerCase().includes(searchLower) ||
+            plu.toLowerCase().includes(searchLower) ||
+            item.name.toLowerCase().includes(searchLower)
+        );
+    });
+
+    if (filteredItems.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="9" class="no-data">Tidak ada data yang sesuai dengan pencarian.</td></tr>';
+        return;
+    }
+
+    const fragment = document.createDocumentFragment();
+    let index = 1;
+
+    for (const [barcode, item] of filteredItems) {
+        const plu = barcode.slice(-4);
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>${index}</td>
+            <td>${item.barcode}</td>
+            <td>${plu}</td>
+            <td>${item.name || '-'}</td>
+            <td>${item.quantity}</td>
+            <td>${formatDateTime(item.firstScanTime)}</td>
+            <td>${formatDateTime(item.lastScanTime)}</td>
+            <td>${item.totalScans}x</td>
+            <td>
+                <button class="edit-btn" onclick="editItem('${barcode}')">✏️</button>
+                <button class="delete-btn" onclick="deleteItem('${barcode}')">🗑️</button>
+            </td>
+        `;
+        fragment.appendChild(row);
+        index++;
+    }
+
+    tbody.innerHTML = '';
+    tbody.appendChild(fragment);
+}
+
+function editItem(barcode) {
+    if (!cekLogin()) return;
+
+    const item = inventoryData.get(barcode);
+    if (!item) return;
+
+    editingBarcode = barcode;
+    document.getElementById('edit-barcode').textContent = barcode;
+    document.getElementById('edit-name').value = item.name || '';
+
+    document.getElementById('edit-modal').style.display = 'block';
+    document.getElementById('edit-name').focus();
+}
+
+function saveEdit() {
+    const item = inventoryData.get(editingBarcode);
+    if (!item) return;
+
+    item.name = document.getElementById('edit-name').value.trim();
+
+    updateDisplay();
+    saveToLocalStorage();
+    showNotification('✅ Item berhasil diupdate!', 'success');
+    document.getElementById('edit-modal').style.display = 'none';
+    editingBarcode = '';
+}
+
+function cancelEdit() {
+    document.getElementById('edit-modal').style.display = 'none';
+    editingBarcode = '';
+}
+
+function deleteItem(barcode) {
+    if (!cekLogin()) return;
+
+    if (confirm('Yakin ingin menghapus item ini?')) {
+        inventoryData.delete(barcode);
+        updateDisplay();
+        saveToLocalStorage();
+        showNotification('✅ Item berhasil dihapus!', 'success');
+    }
+}
+
+function clearAllData() {
+    if (!cekLogin()) return;
+
+    if (confirm('Yakin ingin menghapus SEMUA data? Tindakan ini tidak dapat dibatalkan!')) {
+        inventoryData.clear();
+        scanHistory = [];
+        updateDisplay();
+        clearLocalStorage();
+        showNotification('✅ Semua data berhasil dihapus!', 'success');
+    }
+}
+
+function exportToExcel() {
+    if (!cekLogin()) return;
+
+    if (inventoryData.size === 0) {
+        showNotification('❌ Tidak ada data untuk diekspor!', 'error');
+        return;
+    }
+
+    const data = [];
+    let index = 1;
+
+    for (const [barcode, item] of inventoryData) {
+        const plu = barcode.slice(-4);
+        data.push({
+            'No': index,
+            'Barcode': item.barcode,
+            'PLU': plu,
+            'Nama Produk': item.name || '-',
+            'Quantity': item.quantity,
+            'Waktu Pertama': formatDateTime(item.firstScanTime),
+            'Waktu Terakhir': formatDateTime(item.lastScanTime),
+            'Total Scan': item.totalScans
+        });
+        index++;
+    }
+
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Inventory");
+
+    const filename = `inventory_${formatDateForFile(new Date())}.xlsx`;
+    XLSX.writeFile(wb, filename);
+
+    showNotification(`✅ Data berhasil diekspor ke ${filename}`, 'success');
+}
+
+function importFromExcel(input) {
+    if (!cekLogin()) return;
+
+    const file = input.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function (e) {
+        try {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            const sheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[sheetName];
+            const jsonData = XLSX.utils.sheet_to_json(worksheet);
+
+            let imported = 0;
+            let updated = 0;
+
+            jsonData.forEach(row => {
+                const barcode = String(row['Barcode'] || '').trim();
+                if (!barcode) return;
+
+                const existingItem = inventoryData.get(barcode);
+                const timestamp = new Date();
+
+                if (existingItem) {
+                    existingItem.name = row['Nama Produk'] || existingItem.name;
+                    existingItem.quantity = parseInt(row['Quantity']) || existingItem.quantity;
+                    existingItem.lastScanTime = timestamp;
+                    updated++;
+                } else {
+                    const newItem = {
+                        barcode: barcode,
+                        name: row['Nama Produk'] || '',
+                        quantity: parseInt(row['Quantity']) || 1,
+                        firstScanTime: timestamp,
+                        lastScanTime: timestamp,
+                        totalScans: 1
+                    };
+                    inventoryData.set(barcode, newItem);
+                    imported++;
+                }
+            });
+
+            updateDisplay();
+            saveToLocalStorage();
+            showNotification(`✅ Import selesai: ${imported} baru, ${updated} diupdate`, 'success');
+        } catch (error) {
+            console.error('Import error:', error);
+            showNotification('❌ Gagal import file Excel!', 'error');
+        }
+    };
+
+    reader.readAsArrayBuffer(file);
+    input.value = '';
+}
+
+function backupData() {
+    if (!cekLogin()) return;
+
+    const backupData = {
+        inventory: Object.fromEntries(inventoryData),
+        scanHistory: scanHistory,
+        settings: settings,
+        tableHistory: tableHistory,
+        timestamp: new Date().toISOString()
+    };
+
+    const dataStr = JSON.stringify(backupData, null, 2);
+    const blob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `inventory_backup_${formatDateForFile(new Date())}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    showNotification('✅ Backup data berhasil dibuat!', 'success');
+}
+
+function restoreData(input) {
+    if (!cekLogin()) return;
+
+    const file = input.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function (e) {
+        try {
+            const backupData = JSON.parse(e.target.result);
+
+            if (backupData.inventory) {
+                inventoryData = new Map(Object.entries(backupData.inventory));
+            }
+            if (backupData.scanHistory) {
+                scanHistory = backupData.scanHistory;
+            }
+            if (backupData.tableHistory) {
+                tableHistory = backupData.tableHistory;
+                updateHistoryTable();
+                saveTableHistoryToLocalStorage();
+            }
+            if (backupData.settings) {
+                settings = { ...settings, ...backupData.settings };
+                saveSettings();
+                loadSettings();
+            }
+
+            updateDisplay();
+            saveToLocalStorage();
+            showNotification('✅ Data berhasil direstore!', 'success');
+        } catch (error) {
+            console.error('Restore error:', error);
+            showNotification('❌ Gagal restore data!', 'error');
+        }
+    };
+
+    reader.readAsText(file);
+    input.value = '';
+}
+
+function showSaveTableModal() {
+    if (!cekLogin()) return;
+
+    document.getElementById('table-name').value = '';
+    document.getElementById('save-table-modal').style.display = 'block';
+    document.getElementById('table-name').focus();
+}
+
+function saveTable() {
+    if (!cekLogin()) return;
+
+    const tableName = document.getElementById('table-name').value.trim();
+    const username = localStorage.getItem('username');
+
+    if (!tableName) {
+        showNotification('❌ Nama tabel tidak boleh kosong!', 'error');
+        return;
+    }
+
+    if (!username) {
+        showNotification('❌ Anda harus login untuk menyimpan tabel!', 'error');
+        return;
+    }
+
+    const timestamp = new Date();
+    const tableData = {
+        name: tableName,
+        creator: username,
+        timestamp: timestamp,
+        inventory: Object.fromEntries(inventoryData),
+        scanHistory: scanHistory
+    };
+
+    tableHistory.push(tableData);
+    updateHistoryTable();
+    saveTableHistoryToLocalStorage();
+    showNotification(`✅ Tabel "${tableName}" berhasil disimpan!`, 'success');
+    document.getElementById('save-table-modal').style.display = 'none';
+}
+
+function cancelSaveTable() {
+    document.getElementById('save-table-modal').style.display = 'none';
+}
+
+function viewTable(index) {
+    if (!cekLogin()) return;
+
+    currentTableIndex = index;
+    const table = tableHistory[index];
+    if (!table) return;
+
+    document.getElementById('view-table-title').textContent = `📊 Detail Tabel: ${table.name}`;
+    const tbody = document.getElementById('view-table-body');
+
+    if (!table.inventory || Object.keys(table.inventory).length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="no-data">Tidak ada data untuk ditampilkan.</td></tr>';
+    } else {
+        const fragment = document.createDocumentFragment();
+        let idx = 1;
+        for (const [barcode, item] of Object.entries(table.inventory)) {
+            const plu = barcode.slice(-4);
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${idx}</td>
+                <td>${barcode}</td>
+                <td>${plu}</td>
+                <td>${item.quantity}</td>
+                <td>${formatDateTime(item.lastScanTime)}</td>
+            `;
+            fragment.appendChild(row);
+            idx++;
+        }
+        tbody.innerHTML = '';
+        tbody.appendChild(fragment);
+    }
+
+    document.getElementById('view-table-modal').style.display = 'block';
+}
+
+function confirmRestoreTable() {
+    if (!cekLogin()) return;
+
+    const table = tableHistory[currentTableIndex];
+    if (!table) return;
+
+    if (confirm(`Yakin ingin merestore tabel "${table.name}"? Data saat ini akan diganti.`)) {
+        inventoryData = new Map(Object.entries(table.inventory));
+        scanHistory = table.scanHistory;
+        updateDisplay();
+        saveToLocalStorage();
+        showNotification(`✅ Tabel "${table.name}" berhasil direstore!`, 'success');
+        document.getElementById('view-table-modal').style.display = 'none';
+        currentTableIndex = null;
+    }
+}
+
+function cancelViewTable() {
+    document.getElementById('view-table-modal').style.display = 'none';
+    currentTableIndex = null;
+}
+
+function exportTable(index) {
+    if (!cekLogin()) return;
+
+    const table = tableHistory[index];
+    if (!table || !table.inventory) {
+        showNotification('❌ Tidak ada data untuk diekspor!', 'error');
+        return;
+    }
+
+    const data = [];
+    let idx = 1;
+    for (const [barcode, item] of Object.entries(table.inventory)) {
+        const plu = barcode.slice(-4);
+        data.push({
+            'No': idx,
+            'Barcode': barcode,
+            'PLU': plu,
+            'Nama Produk': item.name || '-',
+            'Quantity': item.quantity,
+            'Waktu Pertama': formatDateTime(item.firstScanTime),
+            'Waktu Terakhir': formatDateTime(item.lastScanTime),
+            'Total Scan': item.totalScans
+        });
+        idx++;
+    }
+
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, table.name);
+
+    const filename = `table_${table.name}_${formatDateForFile(new Date())}.xlsx`;
+    XLSX.writeFile(wb, filename);
+
+    showNotification(`✅ Tabel "${table.name}" berhasil diekspor ke ${filename}`, 'success');
+}
+
+function exportAllTables() {
+    if (!cekLogin()) return;
+
+    if (tableHistory.length === 0) {
+        showNotification('❌ Tidak ada tabel untuk diekspor!', 'error');
+        return;
+    }
+
+    const wb = XLSX.utils.book_new();
+    tableHistory.forEach((table, index) => {
+        const data = [];
+        let idx = 1;
+        for (const [barcode, item] of Object.entries(table.inventory)) {
+            const plu = barcode.slice(-4);
+            data.push({
+                'No': idx,
+                'Barcode': barcode,
+                'PLU': plu,
+                'Nama Produk': item.name || '-',
+                'Quantity': item.quantity,
+                'Waktu Pertama': formatDateTime(item.firstScanTime),
+                'Waktu Terakhir': formatDateTime(item.lastScanTime),
+                'Total Scan': item.totalScans
+            });
+            idx++;
+        }
+        const ws = XLSX.utils.json_to_sheet(data);
+        XLSX.utils.book_append_sheet(wb, ws, table.name || `Table_${index + 1}`);
+    });
+
+    const filename = `all_tables_${formatDateForFile(new Date())}.xlsx`;
+    XLSX.writeFile(wb, filename);
+
+    showNotification(`✅ Semua tabel berhasil diekspor ke ${filename}`, 'success');
+}
+
+function clearTableHistory() {
+    if (!cekLogin()) return;
+
+    if (confirm('Yakin ingin menghapus semua riwayat tabel? Tindakan ini tidak dapat dibatalkan!')) {
+        tableHistory = [];
+        updateHistoryTable();
+        saveTableHistoryToLocalStorage();
+        showNotification('✅ Semua riwayat tabel berhasil dihapus!', 'success');
+    }
+}
+
+function updateHistoryTable() {
+    const tbody = document.getElementById('history-body');
+
+    if (tableHistory.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="no-data">Belum ada riwayat tabel.</td></tr>';
+        return;
+    }
+
+    const fragment = document.createDocumentFragment();
+    let index = 1;
+
+    for (const table of tableHistory) {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>${index}</td>
+            <td>${table.name}</td>
+            <td>${table.creator}</td>
+            <td>${formatDateTime(table.timestamp)}</td>
+            <td>
+                <button class="view-btn" onclick="viewTable(${index - 1})">👁️</button>
+                <button class="restore-btn" onclick="restoreTable(${index - 1})">📂</button>
+                <button class="delete-btn" onclick="deleteTable(${index - 1})">🗑️</button>
+                <button class="export-btn" onclick="exportTable(${index - 1})">📥</button>
+            </td>
+        `;
+        fragment.appendChild(row);
+        index++;
+    }
+
+    tbody.innerHTML = '';
+    tbody.appendChild(fragment);
+}
+
+function searchHistory(searchTerm) {
+    const tbody = document.getElementById('history-body');
+
+    if (!searchTerm.trim()) {
+        updateHistoryTable();
+        return;
+    }
+
+    const filteredTables = tableHistory.filter(table => {
+        const searchLower = searchTerm.toLowerCase();
+        return (
+            table.name.toLowerCase().includes(searchLower) ||
+            table.creator.toLowerCase().includes(searchLower)
+        );
+    });
+
+    if (filteredTables.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="no-data">Tidak ada tabel yang sesuai dengan pencarian.</td></tr>';
+        return;
+    }
+
+    const fragment = document.createDocumentFragment();
+    let index = 1;
+
+    for (const table of filteredTables) {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>${index}</td>
+            <td>${table.name}</td>
+            <td>${table.creator}</td>
+            <td>${formatDateTime(table.timestamp)}</td>
+            <td>
+                <button class="view-btn" onclick="viewTable(${tableHistory.indexOf(table)})">👁️</button>
+                <button class="restore-btn" onclick="restoreTable(${tableHistory.indexOf(table)})">📂</button>
+                <button class="delete-btn" onclick="deleteTable(${tableHistory.indexOf(table)})">🗑️</button>
+                <button class="export-btn" onclick="exportTable(${tableHistory.indexOf(table)})">📥</button>
+            </td>
+        `;
+        fragment.appendChild(row);
+        index++;
+    }
+
+    tbody.innerHTML = '';
+    tbody.appendChild(fragment);
+}
+
+function restoreTable(index) {
+    if (!cekLogin()) return;
+
+    viewTable(index);
+}
+
+function deleteTable(index) {
+    if (!cekLogin()) return;
+
+    if (confirm('Yakin ingin menghapus tabel ini dari riwayat?')) {
+        tableHistory.splice(index, 1);
+        updateHistoryTable();
+        saveTableHistoryToLocalStorage();
+        showNotification('✅ Tabel berhasil dihapus dari riwayat!', 'success');
+    }
+}
+
+function saveTableHistoryToLocalStorage() {
+    try {
+        const dataStr = JSON.stringify(tableHistory);
+        localStorage.setItem(STORAGE_KEYS.TABLE_HISTORY, dataStr);
+    } catch (error) {
+        console.error('Error saving table history to localStorage:', error);
+        showNotification('❌ Gagal menyimpan riwayat tabel!', 'error');
+    }
+}
+
+function loadTableHistoryFromLocalStorage() {
+    try {
+        const dataStr = localStorage.getItem(STORAGE_KEYS.TABLE_HISTORY);
+        if (dataStr) {
+            tableHistory = JSON.parse(dataStr);
+            updateHistoryTable();
+        }
+    } catch (error) {
+        console.error('Error loading table history from localStorage:', error);
+        showNotification('❌ Gagal memuat riwayat tabel!', 'error');
+    }
+}
+
+function saveToLocalStorage() {
+    try {
+        const dataStr = JSON.stringify(Object.fromEntries(inventoryData));
+        if (guestStorageKey) {
+            localStorage.setItem(guestStorageKey, dataStr);
+        } else {
+            localStorage.setItem(STORAGE_KEYS.INVENTORY, dataStr);
+        }
+    } catch (error) {
+        console.error('Error saving inventory to localStorage:', error);
+        showNotification('❌ Gagal menyimpan data inventory!', 'error');
+    }
+}
+
+function loadFromLocalStorage() {
+    try {
+        const storageKey = guestStorageKey || STORAGE_KEYS.INVENTORY;
+        const dataStr = localStorage.getItem(storageKey);
+        if (dataStr) {
+            const data = JSON.parse(dataStr);
+            inventoryData = new Map(Object.entries(data));
+            updateDisplay();
+        }
+    } catch (error) {
+        console.error('Error loading inventory from localStorage:', error);
+        showNotification('❌ Gagal memuat data inventory!', 'error');
+    }
+}
+
+function clearLocalStorage() {
+    try {
+        if (guestStorageKey) {
+            localStorage.removeItem(guestStorageKey);
+        } else {
+            localStorage.removeItem(STORAGE_KEYS.INVENTORY);
+        }
+        showNotification('✅ Data inventory dihapus dari penyimpanan lokal!', 'success');
+    } catch (error) {
+        console.error('Error clearing localStorage:', error);
+        showNotification('❌ Gagal menghapus data inventory!', 'error');
+    }
+}
+
+function saveSettings() {
+    try {
+        localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
+    } catch (error) {
+        console.error('Error saving settings:', error);
+        showNotification('❌ Gagal menyimpan pengaturan!', 'error');
+    }
+}
+
+function loadSettings() {
+    try {
+        const savedSettings = localStorage.getItem(STORAGE_KEYS.SETTINGS);
+        if (savedSettings) {
+            settings = JSON.parse(savedSettings);
+        }
+        document.getElementById('auto-popup-toggle').classList.toggle('active', settings.autoPopup);
+        document.getElementById('sound-toggle').classList.toggle('active', settings.sound);
+        document.getElementById('vibration-toggle').classList.toggle('active', settings.vibration);
+    } catch (error) {
+        console.error('Error loading settings:', error);
+        showNotification('❌ Gagal memuat pengaturan!', 'error');
+    }
+}
+
+function toggleSetting(setting) {
+    settings[setting] = !settings[setting];
+    saveSettings();
+    document.getElementById(`${setting === 'autoPopup' ? 'auto-popup' : setting}-toggle`).classList.toggle('active');
+    showNotification(
+        `✅ ${setting === 'autoPopup' ? 'Auto Popup' : setting.charAt(0).toUpperCase() + setting.slice(1)} ${settings[setting] ? 'diaktifkan' : 'dinonaktifkan'}`,
+        'success'
+    );
+}
+
+function playBeepSound() {
+    try {
+        const oscillator = audioContext.createOscillator();
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+        oscillator.connect(audioContext.destination);
+        oscillator.start();
+        oscillator.stop(audioContext.currentTime + 0.1);
+    } catch (error) {
+        console.error('Error playing beep sound:', error);
+    }
+}
+
+function formatDateTime(date) {
+    if (!date) return '-';
+    const d = new Date(date);
+    const options = {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+    };
+    return d.toLocaleString('id-ID', options).replace(',', '');
+}
+
+function formatDateForFile(date) {
+    const d = new Date(date);
+    return `${d.getFullYear()}${padZero(d.getMonth() + 1)}${padZero(d.getDate())}_${padZero(d.getHours())}${padZero(d.getMinutes())}${padZero(d.getSeconds())}`;
+}
+
+function padZero(num) {
+    return num < 10 ? `0${num}` : num;
+}
+
+function showStatus(message, type) {
+    const statusElement = document.getElementById('status');
+    statusElement.textContent = message;
+    statusElement.className = `status ${type}`;
+    statusElement.style.display = 'block';
+    setTimeout(() => {
+        statusElement.style.display = 'none';
+    }, 5000);
+}
+
+function showNotification(message, type) {
+    const notification = document.createElement('div');
+    notification.className = `notification ${type}`;
+    notification.textContent = message;
+    document.body.appendChild(notification);
+    setTimeout(() => {
+        notification.style.animation = 'slideOutRight 0.4s ease';
+        setTimeout(() => {
+            notification.remove();
+        }, 400);
+    }, 3000);
+}
+
+function showLoading(show) {
+    const loadingElement = document.getElementById('loading');
+    loadingElement.style.display = show ? 'block' : 'none';
+}
+
+function logout() {
+    if (!cekLogin()) return;
+
+    if (confirm('Yakin ingin logout?')) {
+        localStorage.removeItem('username');
+        localStorage.removeItem('isGuest');
+        localStorage.removeItem('guestLoginTime');
+        localStorage.removeItem('guestProvider');
+        if (guestStorageKey) {
+            localStorage.removeItem(guestStorageKey);
+        }
+        inventoryData.clear();
+        scanHistory = [];
+        updateDisplay();
+        showNotification('✅ Anda telah logout!', 'success');
+        window.location.reload();
+    }
+}
+    </script>
+</body>
+</html>
